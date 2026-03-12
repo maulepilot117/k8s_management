@@ -6,6 +6,7 @@ import "context"
 type User struct {
 	ID                 string   `json:"id"`
 	Username           string   `json:"username"`
+	Provider           string   `json:"provider"` // "local", "oidc", "ldap"
 	KubernetesUsername string   `json:"kubernetesUsername"`
 	KubernetesGroups   []string `json:"kubernetesGroups"`
 	Roles              []string `json:"roles"`

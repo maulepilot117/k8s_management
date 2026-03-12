@@ -79,6 +79,9 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := s.Sessions.Validate(cookie.Value)
 	if err != nil {
+		entry := s.newAuditEntry(r, "", audit.ActionRefresh, audit.ResultFailure)
+		entry.Detail = "invalid or expired refresh token"
+		s.AuditLogger.Log(r.Context(), entry)
 		writeJSON(w, http.StatusUnauthorized, api.Response{
 			Error: &api.APIError{Code: 401, Message: "invalid or expired refresh token"},
 		})
@@ -101,6 +104,8 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	s.AuditLogger.Log(r.Context(), s.newAuditEntry(r, user.Username, audit.ActionRefresh, audit.ResultSuccess))
 
 	writeJSON(w, http.StatusOK, api.Response{
 		Data: map[string]any{

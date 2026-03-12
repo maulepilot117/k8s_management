@@ -59,6 +59,7 @@ func (s *Server) issueTokenPair(w http.ResponseWriter, user *auth.User) (string,
 	s.Sessions.Store(auth.RefreshSession{
 		Token:     refreshToken,
 		UserID:    user.ID,
+		Provider:  user.Provider,
 		ExpiresAt: time.Now().Add(auth.RefreshTokenLifetime),
 	})
 

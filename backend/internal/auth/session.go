@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 type RefreshSession struct {
 	Token     string
 	UserID    string
+	Provider  string // auth provider that created this session
 	ExpiresAt time.Time
 }
 
@@ -56,25 +58,14 @@ func (s *SessionStore) Revoke(token string) {
 	s.sessions.Delete(token)
 }
 
-// RevokeAllForUser deletes all refresh tokens for a given user.
-func (s *SessionStore) RevokeAllForUser(userID string) {
-	s.sessions.Range(func(key, val any) bool {
-		session := val.(RefreshSession)
-		if session.UserID == userID {
-			s.sessions.Delete(key)
-		}
-		return true
-	})
-}
-
 // StartCleanup runs a background goroutine to evict expired sessions.
-func (s *SessionStore) StartCleanup(done <-chan struct{}, interval time.Duration) {
+func (s *SessionStore) StartCleanup(ctx context.Context, interval time.Duration) {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-done:
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				now := time.Now()

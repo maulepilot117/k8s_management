@@ -89,11 +89,11 @@ func main() {
 	tokenManager := auth.NewTokenManager(jwtSecret)
 	localAuth := auth.NewLocalProvider(logger)
 	sessions := auth.NewSessionStore()
-	sessions.StartCleanup(ctx.Done(), auth.RefreshTokenLifetime/2)
+	sessions.StartCleanup(ctx, auth.RefreshTokenLifetime/2)
 	rbacChecker := auth.NewRBACChecker(k8sClient, logger)
 	auditLogger := audit.NewSlogLogger(logger)
 	rateLimiter := middleware.NewRateLimiter()
-	rateLimiter.StartCleanup(ctx.Done())
+	rateLimiter.StartCleanup(ctx)
 
 	// Ready state: true after informer sync, false during shutdown
 	var ready atomic.Bool

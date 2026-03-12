@@ -86,31 +86,3 @@ func TestSessionStore_Revoke(t *testing.T) {
 	}
 }
 
-func TestSessionStore_RevokeAllForUser(t *testing.T) {
-	store := NewSessionStore()
-
-	store.Store(RefreshSession{Token: "t1", UserID: "user-1", ExpiresAt: time.Now().Add(time.Hour)})
-	store.Store(RefreshSession{Token: "t2", UserID: "user-1", ExpiresAt: time.Now().Add(time.Hour)})
-	store.Store(RefreshSession{Token: "t3", UserID: "user-2", ExpiresAt: time.Now().Add(time.Hour)})
-
-	store.RevokeAllForUser("user-1")
-
-	// user-1 tokens should be gone
-	_, err := store.Validate("t1")
-	if err == nil {
-		t.Fatal("expected t1 revoked")
-	}
-	_, err = store.Validate("t2")
-	if err == nil {
-		t.Fatal("expected t2 revoked")
-	}
-
-	// user-2 token should still work
-	userID, err := store.Validate("t3")
-	if err != nil {
-		t.Fatalf("t3 should still be valid: %v", err)
-	}
-	if userID != "user-2" {
-		t.Errorf("expected user-2, got %s", userID)
-	}
-}

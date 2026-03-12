@@ -14,9 +14,10 @@ const (
 	ActionUpdate Action = "update"
 	ActionDelete Action = "delete"
 	ActionReveal Action = "reveal" // secret reveal
-	ActionLogin  Action = "login"
-	ActionLogout Action = "logout"
-	ActionSetup  Action = "setup"
+	ActionLogin   Action = "login"
+	ActionLogout  Action = "logout"
+	ActionRefresh Action = "refresh"
+	ActionSetup   Action = "setup"
 )
 
 // Result represents the outcome of an auditable operation.

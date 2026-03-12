@@ -22,6 +22,7 @@ const (
 type TokenClaims struct {
 	jwt.RegisteredClaims
 	Username           string   `json:"username"`
+	Provider           string   `json:"provider"`
 	KubernetesUsername string   `json:"k8s_user"`
 	KubernetesGroups   []string `json:"k8s_groups"`
 	Roles              []string `json:"roles"`
@@ -52,6 +53,7 @@ func (tm *TokenManager) IssueAccessToken(user *User) (string, error) {
 			ExpiresAt: jwt.NewNumericDate(now.Add(AccessTokenLifetime)),
 		},
 		Username:           user.Username,
+		Provider:           user.Provider,
 		KubernetesUsername: user.KubernetesUsername,
 		KubernetesGroups:   user.KubernetesGroups,
 		Roles:              user.Roles,
@@ -89,6 +91,7 @@ func UserFromClaims(claims *TokenClaims) *User {
 	return &User{
 		ID:                 claims.Subject,
 		Username:           claims.Username,
+		Provider:           claims.Provider,
 		KubernetesUsername: claims.KubernetesUsername,
 		KubernetesGroups:   claims.KubernetesGroups,
 		Roles:              claims.Roles,

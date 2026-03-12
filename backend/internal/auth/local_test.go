@@ -112,35 +112,6 @@ func TestLocalProvider_GetUserByID(t *testing.T) {
 	}
 }
 
-func TestLocalProvider_ExportImport(t *testing.T) {
-	p1 := NewLocalProvider(testLogger())
-	p1.CreateUser("admin", "secret123", []string{"admin"})
-	p1.CreateUser("viewer", "view1234", []string{"viewer"})
-
-	data, err := p1.ExportUsers()
-	if err != nil {
-		t.Fatalf("ExportUsers failed: %v", err)
-	}
-
-	p2 := NewLocalProvider(testLogger())
-	if err := p2.ImportUsers(data); err != nil {
-		t.Fatalf("ImportUsers failed: %v", err)
-	}
-
-	if p2.UserCount() != 2 {
-		t.Errorf("expected 2 users after import, got %d", p2.UserCount())
-	}
-
-	// Verify authentication works after import
-	_, err = p2.Authenticate(context.Background(), Credentials{
-		Username: "admin",
-		Password: "secret123",
-	})
-	if err != nil {
-		t.Fatalf("Authenticate after import failed: %v", err)
-	}
-}
-
 func TestLocalProvider_Type(t *testing.T) {
 	p := NewLocalProvider(testLogger())
 	if p.Type() != "local" {

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -65,14 +66,14 @@ func (rl *RateLimiter) Check(ip string) (allowed bool, retryAfterSec int) {
 	return false, int(remaining.Seconds()) + 1
 }
 
-// StartCleanup removes stale entries periodically.
-func (rl *RateLimiter) StartCleanup(done <-chan struct{}) {
+// StartCleanup removes stale entries periodically until the context is cancelled.
+func (rl *RateLimiter) StartCleanup(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(cleanupInterval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-done:
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				rl.cleanup()

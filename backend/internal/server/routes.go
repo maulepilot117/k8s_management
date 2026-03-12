@@ -14,7 +14,7 @@ func (s *Server) registerRoutes() {
 		// Public auth routes — rate limited where needed, no auth required
 		r.Route("/auth", func(ar chi.Router) {
 			ar.With(middleware.RateLimit(s.RateLimiter)).Post("/login", s.handleLogin)
-			ar.Post("/refresh", s.handleRefresh)
+			ar.With(middleware.RateLimit(s.RateLimiter)).Post("/refresh", s.handleRefresh)
 			ar.Post("/logout", s.handleLogout)
 			ar.Get("/providers", s.handleAuthProviders)
 		})

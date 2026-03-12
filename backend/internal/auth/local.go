@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -35,6 +34,17 @@ type storedUser struct {
 	KubernetesUsername string   `json:"kubernetesUsername"`
 	KubernetesGroups   []string `json:"kubernetesGroups"`
 	Roles              []string `json:"roles"`
+}
+
+func (s storedUser) toUser() *User {
+	return &User{
+		ID:                 s.ID,
+		Username:           s.Username,
+		Provider:           "local",
+		KubernetesUsername: s.KubernetesUsername,
+		KubernetesGroups:   s.KubernetesGroups,
+		Roles:              s.Roles,
+	}
 }
 
 // LocalProvider authenticates users against a local account store.
@@ -92,13 +102,7 @@ func (p *LocalProvider) Authenticate(ctx context.Context, creds Credentials) (*U
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	return &User{
-		ID:                 stored.ID,
-		Username:           stored.Username,
-		KubernetesUsername: stored.KubernetesUsername,
-		KubernetesGroups:   stored.KubernetesGroups,
-		Roles:              stored.Roles,
-	}, nil
+	return stored.toUser(), nil
 }
 
 // CreateFirstUser atomically creates the first user only if no users exist.
@@ -156,13 +160,7 @@ func (p *LocalProvider) createUser(username, password string, roles []string, re
 
 	p.logger.Info("local user created", "username", username, "roles", roles)
 
-	return &User{
-		ID:                 stored.ID,
-		Username:           stored.Username,
-		KubernetesUsername: stored.KubernetesUsername,
-		KubernetesGroups:   stored.KubernetesGroups,
-		Roles:              stored.Roles,
-	}, nil
+	return stored.toUser(), nil
 }
 
 // UserCount returns the number of local users.
@@ -179,46 +177,10 @@ func (p *LocalProvider) GetUserByID(id string) (*User, error) {
 
 	for _, stored := range p.users {
 		if stored.ID == id {
-			return &User{
-				ID:                 stored.ID,
-				Username:           stored.Username,
-				KubernetesUsername: stored.KubernetesUsername,
-				KubernetesGroups:   stored.KubernetesGroups,
-				Roles:              stored.Roles,
-			}, nil
+			return stored.toUser(), nil
 		}
 	}
 	return nil, fmt.Errorf("user not found: %s", id)
-}
-
-// ExportUsers serializes the user store to JSON for persistence.
-func (p *LocalProvider) ExportUsers() ([]byte, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	users := make([]storedUser, 0, len(p.users))
-	for _, u := range p.users {
-		users = append(users, u)
-	}
-	return json.Marshal(users)
-}
-
-// ImportUsers loads users from JSON into the store.
-func (p *LocalProvider) ImportUsers(data []byte) error {
-	var users []storedUser
-	if err := json.Unmarshal(data, &users); err != nil {
-		return fmt.Errorf("unmarshaling users: %w", err)
-	}
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	for _, u := range users {
-		p.users[u.Username] = u
-	}
-
-	p.logger.Info("imported local users", "count", len(users))
-	return nil
 }
 
 func generateID() (string, error) {
