@@ -1,0 +1,56 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Go backend
+backend/bin/
+backend/tmp/
+backend/kubecenter
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+coverage.out
+coverage.html
+
+# Deno / Fresh frontend
+frontend/node_modules/
+frontend/_fresh/
+frontend/.vite/
+frontend/dist/
+
+# Helm
+helm/kubecenter/charts/*.tgz
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+
+# SQLite
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Docker
+docker-compose.override.yml
+
+# Misc
+*.log
+*.tmp
