@@ -81,8 +81,27 @@ kubecenter/
 │   │   │
 │   │   ├── k8s/
 │   │   │   ├── client.go              # ClientFactory — in-cluster/kubeconfig, impersonation cache (sync.Map, 5-min TTL)
-│   │   │   └── informers.go           # InformerManager — pods, deployments, services, namespaces, nodes
-│   │   │   # [planned] resources/     # Resource handlers (Step 3)
+│   │   │   ├── informers.go           # InformerManager — 18 resource types, 5-min resync
+│   │   │   └── resources/
+│   │   │       ├── handler.go         # Shared handler struct, helpers (writeJSON, writeError, pagination, validation)
+│   │   │       ├── access.go          # RBAC AccessChecker — SelfSubjectAccessReview, 60s cache, sweeper
+│   │   │       ├── errors.go          # mapK8sError — translate k8s API errors to HTTP status codes
+│   │   │       ├── tasks.go           # TaskManager — long-running ops (drain), reaper, deduplication
+│   │   │       ├── deployments.go     # CRUD + scale + rollback + restart, generic paginate[T]
+│   │   │       ├── statefulsets.go    # CRUD + scale
+│   │   │       ├── daemonsets.go      # CRUD
+│   │   │       ├── pods.go            # List, get, delete
+│   │   │       ├── services.go        # CRUD
+│   │   │       ├── ingresses.go       # CRUD
+│   │   │       ├── configmaps.go      # CRUD
+│   │   │       ├── secrets.go         # CRUD with value masking + audit-logged reveal
+│   │   │       ├── namespaces.go      # CRUD (cluster-scoped)
+│   │   │       ├── nodes.go           # List, get, cordon/uncordon, async drain with task tracking
+│   │   │       ├── pvcs.go            # List, get, create, delete
+│   │   │       ├── jobs.go            # Jobs + CronJobs CRUD
+│   │   │       ├── networkpolicies.go # CRUD
+│   │   │       ├── rbac_viewer.go     # Read-only: Roles, ClusterRoles, RoleBindings, ClusterRoleBindings
+│   │   │       └── resources_test.go  # 19 tests — list, get, pagination, RBAC, masking, validation
 │   │   │   # [planned] storage/       # CSI/StorageClass (Step 10)
 │   │   │   # [planned] networking/    # CNI detection (Step 10)
 │   │   │
@@ -103,7 +122,7 @@ kubecenter/
 │   │
 │   ├── pkg/
 │   │   ├── api/
-│   │   │   └── types.go               # Shared API request/response types (APIResponse, APIError)
+│   │   │   └── types.go               # Response envelope (data/metadata/error), Metadata (total, continue)
 │   │   └── version/
 │   │       ├── version.go             # Build version info (ldflags)
 │   │       └── version_test.go
@@ -544,9 +563,9 @@ type APIError struct {
 
 Build in this order to have a working system at each step:
 
-1. **Backend skeleton** — HTTP server, health check, config loading, in-cluster k8s client
-2. **Auth system** — Local accounts with JWT, login/logout endpoints, auth middleware
-3. **Resource listing** — Informer-backed list/get for pods, deployments, services, namespaces
+1. ~~**Backend skeleton** — HTTP server, health check, config loading, in-cluster k8s client~~ ✅
+2. ~~**Auth system** — Local accounts with JWT, login/logout endpoints, auth middleware~~ ✅
+3. ~~**Resource listing** — Informer-backed CRUD for 15 resource types, RBAC, pagination, validation~~ ✅
 4. **Frontend skeleton** — Fresh app with layout, sidebar, login page, dashboard home
 5. **Resource browser** — Tables for pods, deployments, services with real-time WebSocket updates
 6. **Resource detail** — Detail views with tabs (Overview, YAML, Events, Metrics placeholder)

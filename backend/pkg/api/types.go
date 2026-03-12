@@ -9,9 +9,8 @@ type Response struct {
 
 // Metadata contains pagination info for list responses.
 type Metadata struct {
-	Total    int `json:"total"`
-	Page     int `json:"page"`
-	PageSize int `json:"pageSize"`
+	Total    int    `json:"total"`
+	Continue string `json:"continue,omitempty"`
 }
 
 // APIError is the standard error response.
