@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kubecenter/kubecenter/internal/audit"
@@ -24,18 +25,23 @@ func (h *Handler) HandleListDeployments(w http.ResponseWriter, r *http.Request) 
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var allDeps []*appsv1.Deployment
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindDeployment, params.Namespace) {
 			return
 		}
-		allDeps, err = h.Informers.Deployments().Deployments(params.Namespace).List(parseSelector(params.LabelSelector))
+		allDeps, err = h.Informers.Deployments().Deployments(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindDeployment, "") {
 			return
 		}
-		allDeps, err = h.Informers.Deployments().List(parseSelector(params.LabelSelector))
+		allDeps, err = h.Informers.Deployments().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "Deployment", params.Namespace, "")
@@ -99,7 +105,7 @@ func (h *Handler) HandleCreateDeployment(w http.ResponseWriter, r *http.Request)
 	}
 
 	h.auditWrite(r, user, audit.ActionCreate, "Deployment", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 // HandleUpdateDeployment handles PUT /api/v1/resources/deployments/:namespace/:name
@@ -235,8 +241,17 @@ func (h *Handler) HandleRollbackDeployment(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Get the target ReplicaSet for the given revision
-	rsList, err := cs.AppsV1().ReplicaSets(ns).List(r.Context(), metav1.ListOptions{})
+	// Get the deployment to use its label selector for scoping RS queries
+	dep, err := h.Informers.Deployments().Deployments(ns).Get(name)
+	if err != nil {
+		mapK8sError(w, err, "get", "Deployment", ns, name)
+		return
+	}
+
+	// Get the target ReplicaSet for the given revision, scoped to this deployment
+	rsList, err := cs.AppsV1().ReplicaSets(ns).List(r.Context(), metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(dep.Spec.Selector),
+	})
 	if err != nil {
 		mapK8sError(w, err, "list", "ReplicaSet", ns, "")
 		return
@@ -315,21 +330,39 @@ func (h *Handler) HandleRestartDeployment(w http.ResponseWriter, r *http.Request
 }
 
 // parseSelector converts a label selector string to a labels.Selector.
-func parseSelector(s string) labels.Selector {
+// Returns an error for invalid selectors instead of silently returning Everything().
+func parseSelector(s string) (labels.Selector, error) {
 	if s == "" {
-		return labels.Everything()
+		return labels.Everything(), nil
 	}
-	sel, err := labels.Parse(s)
+	return labels.Parse(s)
+}
+
+// parseSelectorOrReject parses the label selector and writes a 400 error if invalid.
+// Returns the selector and true if valid, or zero value and false if an error was written.
+func parseSelectorOrReject(w http.ResponseWriter, s string) (labels.Selector, bool) {
+	sel, err := parseSelector(s)
 	if err != nil {
-		return labels.Everything()
+		writeError(w, http.StatusBadRequest,
+			"invalid label selector: "+s,
+			err.Error(),
+		)
+		return nil, false
 	}
-	return sel
+	return sel, true
 }
 
 // paginate implements simple offset-based pagination using a continue token
-// that represents the starting index. Returns the page of items and the next
-// continue token (empty if no more items).
+// that represents the starting index. Items are sorted by namespace+name for
+// deterministic ordering across requests. Returns the page of items and the
+// next continue token (empty if no more items).
 func paginate[T any](items []*T, limit int, continueToken string) ([]*T, string) {
+	// Sort for deterministic pagination — items from informer cache are unordered.
+	sort.Slice(items, func(i, j int) bool {
+		a, b := objectKey(items[i]), objectKey(items[j])
+		return a < b
+	})
+
 	start := 0
 	if continueToken != "" {
 		fmt.Sscanf(continueToken, "%d", &start)
@@ -350,4 +383,16 @@ func paginate[T any](items []*T, limit int, continueToken string) ([]*T, string)
 	}
 
 	return items[start:end], nextToken
+}
+
+// objectKey returns "namespace/name" for a Kubernetes object to use as a sort key.
+func objectKey(obj any) string {
+	if acc, ok := obj.(metav1.ObjectMetaAccessor); ok {
+		m := acc.GetObjectMeta()
+		if m.GetNamespace() != "" {
+			return m.GetNamespace() + "/" + m.GetName()
+		}
+		return m.GetName()
+	}
+	return ""
 }

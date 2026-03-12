@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,7 @@ const accessCacheTTL = 60 * time.Second
 
 type accessCacheKey struct {
 	username  string
+	groups    string // sorted, comma-joined for deterministic keying
 	resource  string
 	namespace string
 	verb      string
@@ -56,6 +59,7 @@ func (ac *AccessChecker) CanAccess(ctx context.Context, username string, groups 
 	}
 	key := accessCacheKey{
 		username:  username,
+		groups:    sortedGroups(groups),
 		resource:  resource,
 		namespace: namespace,
 		verb:      verb,
@@ -115,6 +119,41 @@ func NewAlwaysAllowAccessChecker() *AccessChecker {
 		logger:        slog.Default(),
 		alwaysAllow:   true,
 	}
+}
+
+// StartCacheSweeper runs a background goroutine that periodically removes
+// expired entries from the access cache. Stops when ctx is cancelled.
+func (ac *AccessChecker) StartCacheSweeper(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(accessCacheTTL)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				ac.cache.Range(func(key, val any) bool {
+					if entry, ok := val.(accessCacheEntry); ok && now.After(entry.expiresAt) {
+						ac.cache.Delete(key)
+					}
+					return true
+				})
+			}
+		}
+	}()
+}
+
+// sortedGroups returns a deterministic string representation of a groups slice
+// for use as a cache key. Groups are sorted to ensure consistent keying.
+func sortedGroups(groups []string) string {
+	if len(groups) == 0 {
+		return ""
+	}
+	sorted := make([]string, len(groups))
+	copy(sorted, groups)
+	sort.Strings(sorted)
+	return strings.Join(sorted, ",")
 }
 
 // apiGroupForResource returns the API group for common resource types.

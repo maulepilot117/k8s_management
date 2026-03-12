@@ -18,18 +18,23 @@ func (h *Handler) HandleListServices(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*corev1.Service
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindService, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.Services().Services(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Services().Services(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindService, "") {
 			return
 		}
-		all, err = h.Informers.Services().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Services().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "Service", params.Namespace, "")
@@ -84,7 +89,7 @@ func (h *Handler) HandleCreateService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "Service", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleUpdateService(w http.ResponseWriter, r *http.Request) {

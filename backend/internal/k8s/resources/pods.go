@@ -18,18 +18,23 @@ func (h *Handler) HandleListPods(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*corev1.Pod
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindPod, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.Pods().Pods(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Pods().Pods(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindPod, "") {
 			return
 		}
-		all, err = h.Informers.Pods().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Pods().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "Pod", params.Namespace, "")

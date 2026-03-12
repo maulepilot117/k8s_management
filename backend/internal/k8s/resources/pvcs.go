@@ -18,18 +18,23 @@ func (h *Handler) HandleListPVCs(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*corev1.PersistentVolumeClaim
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindPVC, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.PersistentVolumeClaims().PersistentVolumeClaims(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.PersistentVolumeClaims().PersistentVolumeClaims(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindPVC, "") {
 			return
 		}
-		all, err = h.Informers.PersistentVolumeClaims().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.PersistentVolumeClaims().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "PersistentVolumeClaim", params.Namespace, "")
@@ -84,7 +89,7 @@ func (h *Handler) HandleCreatePVC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "PersistentVolumeClaim", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleDeletePVC(w http.ResponseWriter, r *http.Request) {

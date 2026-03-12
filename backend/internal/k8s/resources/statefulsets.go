@@ -19,18 +19,23 @@ func (h *Handler) HandleListStatefulSets(w http.ResponseWriter, r *http.Request)
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*appsv1.StatefulSet
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindStatefulSet, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.StatefulSets().StatefulSets(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.StatefulSets().StatefulSets(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindStatefulSet, "") {
 			return
 		}
-		all, err = h.Informers.StatefulSets().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.StatefulSets().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "StatefulSet", params.Namespace, "")
@@ -86,7 +91,7 @@ func (h *Handler) HandleCreateStatefulSet(w http.ResponseWriter, r *http.Request
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "StatefulSet", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleUpdateStatefulSet(w http.ResponseWriter, r *http.Request) {

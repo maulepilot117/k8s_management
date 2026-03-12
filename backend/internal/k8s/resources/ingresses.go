@@ -18,18 +18,23 @@ func (h *Handler) HandleListIngresses(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*networkingv1.Ingress
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindIngress, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.Ingresses().Ingresses(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Ingresses().Ingresses(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindIngress, "") {
 			return
 		}
-		all, err = h.Informers.Ingresses().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Ingresses().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "Ingress", params.Namespace, "")
@@ -84,7 +89,7 @@ func (h *Handler) HandleCreateIngress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "Ingress", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleUpdateIngress(w http.ResponseWriter, r *http.Request) {

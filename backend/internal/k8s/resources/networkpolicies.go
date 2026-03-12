@@ -18,18 +18,23 @@ func (h *Handler) HandleListNetworkPolicies(w http.ResponseWriter, r *http.Reque
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*networkingv1.NetworkPolicy
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindNetworkPolicy, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.NetworkPolicies().NetworkPolicies(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.NetworkPolicies().NetworkPolicies(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindNetworkPolicy, "") {
 			return
 		}
-		all, err = h.Informers.NetworkPolicies().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.NetworkPolicies().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "NetworkPolicy", params.Namespace, "")
@@ -84,7 +89,7 @@ func (h *Handler) HandleCreateNetworkPolicy(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "NetworkPolicy", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleUpdateNetworkPolicy(w http.ResponseWriter, r *http.Request) {

@@ -18,18 +18,23 @@ func (h *Handler) HandleListConfigMaps(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*corev1.ConfigMap
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindConfigMap, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.ConfigMaps().ConfigMaps(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.ConfigMaps().ConfigMaps(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindConfigMap, "") {
 			return
 		}
-		all, err = h.Informers.ConfigMaps().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.ConfigMaps().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "ConfigMap", params.Namespace, "")
@@ -84,7 +89,7 @@ func (h *Handler) HandleCreateConfigMap(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "ConfigMap", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleUpdateConfigMap(w http.ResponseWriter, r *http.Request) {

@@ -74,6 +74,7 @@ func New(deps Deps) *Server {
 			AuditLogger:   deps.AuditLogger,
 			Logger:        deps.Logger,
 			TaskManager:   resources.NewTaskManager(),
+			ClusterID:     deps.Config.ClusterID,
 		}
 	}
 

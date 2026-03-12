@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/kubecenter/kubecenter/pkg/api"
 )
+
+const completedTaskTTL = 1 * time.Hour
 
 // TaskStatus represents the state of a long-running operation.
 type TaskStatus string
@@ -40,6 +43,19 @@ type Task struct {
 type TaskManager struct {
 	mu    sync.RWMutex
 	tasks map[string]*Task
+}
+
+// HasActiveTask returns true if there is a running or pending task of the given
+// kind for the given name. Used to prevent duplicate drain operations.
+func (tm *TaskManager) HasActiveTask(kind, name string) bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	for _, t := range tm.tasks {
+		if t.Kind == kind && t.Name == name && (t.Status == TaskStatusPending || t.Status == TaskStatusRunning) {
+			return true
+		}
+	}
+	return false
 }
 
 // NewTaskManager creates a new TaskManager.
@@ -103,6 +119,34 @@ func (tm *TaskManager) UpdateStatus(id string, status TaskStatus, message string
 	if status == TaskStatusComplete || status == TaskStatusFailed {
 		now := timeNow()
 		t.EndedAt = &now
+	}
+}
+
+// StartReaper runs a background goroutine that periodically removes completed
+// tasks older than completedTaskTTL. Stops when ctx is cancelled.
+func (tm *TaskManager) StartReaper(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				tm.reapCompleted()
+			}
+		}
+	}()
+}
+
+func (tm *TaskManager) reapCompleted() {
+	now := timeNow()
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	for id, t := range tm.tasks {
+		if (t.Status == TaskStatusComplete || t.Status == TaskStatusFailed) && t.EndedAt != nil && now.Sub(*t.EndedAt) > completedTaskTTL {
+			delete(tm.tasks, id)
+		}
 	}
 }
 

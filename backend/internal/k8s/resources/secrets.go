@@ -171,7 +171,7 @@ func (h *Handler) HandleCreateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "Secret", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, maskedSecret(created))
+	writeCreated(w, maskedSecret(created))
 }
 
 func (h *Handler) HandleUpdateSecret(w http.ResponseWriter, r *http.Request) {

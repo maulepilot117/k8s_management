@@ -16,18 +16,23 @@ func (h *Handler) HandleListRoles(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*rbacv1.Role
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", "roles", params.Namespace) {
 			return
 		}
-		all, err = h.Informers.Roles().Roles(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Roles().Roles(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", "roles", "") {
 			return
 		}
-		all, err = h.Informers.Roles().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Roles().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "Role", params.Namespace, "")
@@ -64,7 +69,11 @@ func (h *Handler) HandleListClusterRoles(w http.ResponseWriter, r *http.Request)
 	if !h.checkAccess(w, r, user, "list", "clusterroles", "") {
 		return
 	}
-	all, err := h.Informers.ClusterRoles().List(parseSelector(params.LabelSelector))
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+	all, err := h.Informers.ClusterRoles().List(sel)
 	if err != nil {
 		mapK8sError(w, err, "list", "ClusterRole", "", "")
 		return
@@ -97,18 +106,23 @@ func (h *Handler) HandleListRoleBindings(w http.ResponseWriter, r *http.Request)
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*rbacv1.RoleBinding
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", "rolebindings", params.Namespace) {
 			return
 		}
-		all, err = h.Informers.RoleBindings().RoleBindings(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.RoleBindings().RoleBindings(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", "rolebindings", "") {
 			return
 		}
-		all, err = h.Informers.RoleBindings().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.RoleBindings().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "RoleBinding", params.Namespace, "")
@@ -127,7 +141,11 @@ func (h *Handler) HandleListClusterRoleBindings(w http.ResponseWriter, r *http.R
 	if !h.checkAccess(w, r, user, "list", "clusterrolebindings", "") {
 		return
 	}
-	all, err := h.Informers.ClusterRoleBindings().List(parseSelector(params.LabelSelector))
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+	all, err := h.Informers.ClusterRoleBindings().List(sel)
 	if err != nil {
 		mapK8sError(w, err, "list", "ClusterRoleBinding", "", "")
 		return

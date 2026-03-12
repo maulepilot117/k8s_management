@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/kubecenter/kubecenter/internal/audit"
 	"github.com/kubecenter/kubecenter/internal/auth"
+	"github.com/kubecenter/kubecenter/pkg/api"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +32,11 @@ func (h *Handler) HandleListNodes(w http.ResponseWriter, r *http.Request) {
 	if !h.checkAccess(w, r, user, "list", kindNode, "") {
 		return
 	}
-	all, err := h.Informers.Nodes().List(parseSelector(params.LabelSelector))
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+	all, err := h.Informers.Nodes().List(sel)
 	if err != nil {
 		mapK8sError(w, err, "list", "Node", "", "")
 		return
@@ -129,24 +134,37 @@ func (h *Handler) HandleDrainNode(w http.ResponseWriter, r *http.Request) {
 		req.Timeout = defaultDrainTimeout
 	}
 
+	if req.Timeout > 30*time.Minute {
+		req.Timeout = 30 * time.Minute
+	}
+
+	if h.TaskManager.HasActiveTask("drain", name) {
+		writeError(w, http.StatusConflict, "drain already in progress for node "+name, "")
+		return
+	}
+
 	taskID := h.TaskManager.Create("drain", name, "", user.Username)
 	h.TaskManager.UpdateStatus(taskID, TaskStatusRunning, "starting drain", 0)
 
-	go h.executeDrain(taskID, name, req, user)
+	h.auditWrite(r, user, audit.ActionUpdate, "Node", "", name, audit.ResultSuccess)
 
-	writeJSON(w, http.StatusAccepted, map[string]string{
-		"taskID":  taskID,
-		"message": "drain started",
+	go h.executeDrain(r.Context(), taskID, name, req, user)
+
+	writeJSON(w, http.StatusAccepted, api.Response{
+		Data: map[string]string{
+			"taskID":  taskID,
+			"message": "drain started",
+		},
 	})
 }
 
-func (h *Handler) executeDrain(taskID, nodeName string, req DrainRequest, user *auth.User) {
-	ctx, cancel := context.WithTimeout(context.Background(), req.Timeout)
+func (h *Handler) executeDrain(parentCtx context.Context, taskID, nodeName string, req DrainRequest, user *auth.User) {
+	ctx, cancel := context.WithTimeout(parentCtx, req.Timeout)
 	defer cancel()
 
 	cs, err := h.K8sClient.ClientForUser(user.KubernetesUsername, user.KubernetesGroups)
 	if err != nil {
-		h.TaskManager.UpdateStatus(taskID, TaskStatusFailed, "failed to create client: "+err.Error(), 0)
+		h.TaskManager.UpdateStatus(taskID, TaskStatusFailed, "failed to create client", 0)
 		return
 	}
 
@@ -155,7 +173,8 @@ func (h *Handler) executeDrain(taskID, nodeName string, req DrainRequest, user *
 	patchData := `{"spec":{"unschedulable":true}}`
 	_, err = cs.CoreV1().Nodes().Patch(ctx, nodeName, types.StrategicMergePatchType, []byte(patchData), metav1.PatchOptions{})
 	if err != nil {
-		h.TaskManager.UpdateStatus(taskID, TaskStatusFailed, "failed to cordon node: "+err.Error(), 10)
+		h.Logger.Error("drain: failed to cordon node", "node", nodeName, "error", err)
+		h.TaskManager.UpdateStatus(taskID, TaskStatusFailed, "failed to cordon node", 10)
 		return
 	}
 
@@ -165,7 +184,8 @@ func (h *Handler) executeDrain(taskID, nodeName string, req DrainRequest, user *
 		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": nodeName}).String(),
 	})
 	if err != nil {
-		h.TaskManager.UpdateStatus(taskID, TaskStatusFailed, "failed to list pods: "+err.Error(), 20)
+		h.Logger.Error("drain: failed to list pods", "node", nodeName, "error", err)
+		h.TaskManager.UpdateStatus(taskID, TaskStatusFailed, "failed to list pods", 20)
 		return
 	}
 
@@ -181,8 +201,9 @@ func (h *Handler) executeDrain(taskID, nodeName string, req DrainRequest, user *
 		)
 
 		if err := evictPod(ctx, cs, &pod); err != nil {
+			h.Logger.Error("drain: failed to evict pod", "node", nodeName, "pod", pod.Namespace+"/"+pod.Name, "error", err)
 			h.TaskManager.UpdateStatus(taskID, TaskStatusFailed,
-				fmt.Sprintf("failed to evict pod %s/%s: %s", pod.Namespace, pod.Name, err.Error()),
+				fmt.Sprintf("failed to evict pod %s/%s", pod.Namespace, pod.Name),
 				progress,
 			)
 			return

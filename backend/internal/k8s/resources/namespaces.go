@@ -20,7 +20,11 @@ func (h *Handler) HandleListNamespaces(w http.ResponseWriter, r *http.Request) {
 	if !h.checkAccess(w, r, user, "list", kindNamespace, "") {
 		return
 	}
-	all, err := h.Informers.Namespaces().List(parseSelector(params.LabelSelector))
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+	all, err := h.Informers.Namespaces().List(sel)
 	if err != nil {
 		mapK8sError(w, err, "list", "Namespace", "", "")
 		return
@@ -71,7 +75,7 @@ func (h *Handler) HandleCreateNamespace(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "Namespace", "", created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleDeleteNamespace(w http.ResponseWriter, r *http.Request) {

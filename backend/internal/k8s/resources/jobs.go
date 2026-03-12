@@ -23,18 +23,23 @@ func (h *Handler) HandleListJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*batchv1.Job
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindJob, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.Jobs().Jobs(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Jobs().Jobs(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindJob, "") {
 			return
 		}
-		all, err = h.Informers.Jobs().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.Jobs().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "Job", params.Namespace, "")
@@ -89,7 +94,7 @@ func (h *Handler) HandleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "Job", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleDeleteJob(w http.ResponseWriter, r *http.Request) {
@@ -126,18 +131,23 @@ func (h *Handler) HandleListCronJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*batchv1.CronJob
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindCronJob, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.CronJobs().CronJobs(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.CronJobs().CronJobs(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindCronJob, "") {
 			return
 		}
-		all, err = h.Informers.CronJobs().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.CronJobs().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "CronJob", params.Namespace, "")
@@ -192,7 +202,7 @@ func (h *Handler) HandleCreateCronJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "CronJob", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleDeleteCronJob(w http.ResponseWriter, r *http.Request) {

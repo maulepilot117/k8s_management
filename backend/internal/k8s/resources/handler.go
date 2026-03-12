@@ -22,6 +22,7 @@ type Handler struct {
 	AuditLogger   audit.Logger
 	Logger        *slog.Logger
 	TaskManager   *TaskManager
+	ClusterID     string
 }
 
 // ListParams holds query parameters for list operations.
@@ -89,7 +90,7 @@ func (h *Handler) checkAccess(w http.ResponseWriter, r *http.Request, user *auth
 func (h *Handler) auditWrite(r *http.Request, user *auth.User, action audit.Action, kind, namespace, name string, result audit.Result) {
 	h.AuditLogger.Log(r.Context(), audit.Entry{
 		Timestamp:         timeNow(),
-		ClusterID:         "", // filled by the caller or we could pass config
+		ClusterID:         h.ClusterID,
 		User:              user.Username,
 		SourceIP:          r.RemoteAddr,
 		Action:            action,
@@ -120,7 +121,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // writeError writes a JSON error response.
+// Internal error details are logged server-side but not exposed to the client
+// to prevent information disclosure (CLAUDE.md: "never expose internal errors to users").
 func writeError(w http.ResponseWriter, status int, message, detail string) {
+	if detail != "" && status >= 500 {
+		slog.Error("internal error detail", "status", status, "message", message, "detail", detail)
+		detail = "" // strip internal details from 5xx responses
+	}
 	writeJSON(w, status, api.Response{
 		Error: &api.APIError{
 			Code:    status,
@@ -144,4 +151,9 @@ func writeList(w http.ResponseWriter, items any, total int, continueToken string
 // writeData writes a single data item response.
 func writeData(w http.ResponseWriter, data any) {
 	writeJSON(w, http.StatusOK, api.Response{Data: data})
+}
+
+// writeCreated writes a 201 Created response with the standard envelope.
+func writeCreated(w http.ResponseWriter, data any) {
+	writeJSON(w, http.StatusCreated, api.Response{Data: data})
 }

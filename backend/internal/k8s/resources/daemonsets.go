@@ -18,18 +18,23 @@ func (h *Handler) HandleListDaemonSets(w http.ResponseWriter, r *http.Request) {
 	}
 	params := parseListParams(r)
 
+	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
+	if !ok {
+		return
+	}
+
 	var all []*appsv1.DaemonSet
 	var err error
 	if params.Namespace != "" {
 		if !h.checkAccess(w, r, user, "list", kindDaemonSet, params.Namespace) {
 			return
 		}
-		all, err = h.Informers.DaemonSets().DaemonSets(params.Namespace).List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.DaemonSets().DaemonSets(params.Namespace).List(sel)
 	} else {
 		if !h.checkAccess(w, r, user, "list", kindDaemonSet, "") {
 			return
 		}
-		all, err = h.Informers.DaemonSets().List(parseSelector(params.LabelSelector))
+		all, err = h.Informers.DaemonSets().List(sel)
 	}
 	if err != nil {
 		mapK8sError(w, err, "list", "DaemonSet", params.Namespace, "")
@@ -84,7 +89,7 @@ func (h *Handler) HandleCreateDaemonSet(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.auditWrite(r, user, audit.ActionCreate, "DaemonSet", ns, created.Name, audit.ResultSuccess)
-	writeJSON(w, http.StatusCreated, created)
+	writeCreated(w, created)
 }
 
 func (h *Handler) HandleUpdateDaemonSet(w http.ResponseWriter, r *http.Request) {
