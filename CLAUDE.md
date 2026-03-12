@@ -17,10 +17,10 @@ KubeCenter is a web-based Kubernetes management platform that delivers vCenter-l
 | Password Hashing | golang.org/x/crypto (Argon2id) | v0.49.0 |
 | Configuration | koanf/v2 | v2.3.3 (YAML file + env vars) |
 | WebSocket | gorilla/websocket | v1.5.x (planned) |
-| Frontend Runtime | Deno | 2.x (planned — Step 4+) |
-| Frontend Framework | Fresh | 2.x via JSR @fresh/core (planned — Step 4+) |
-| Language | TypeScript | Strict mode, ESM only (planned) |
-| CSS | Tailwind CSS | v4.x (planned) |
+| Frontend Runtime | Deno | 2.x |
+| Frontend Framework | Fresh | 2.x via JSR @fresh/core@^2.2.0 |
+| Language | TypeScript | Strict mode, ESM only |
+| CSS | Tailwind CSS | v4.x (@tailwindcss/vite) |
 | YAML Editor | Monaco Editor | Latest (planned) |
 | Monitoring | Prometheus + Grafana | kube-prometheus-stack compatible (planned — Step 9) |
 | Alerting | Prometheus Alertmanager + SMTP | Via Go SMTP client (planned — Step 11) |
@@ -30,7 +30,7 @@ KubeCenter is a web-based Kubernetes management platform that delivers vCenter-l
 
 ---
 
-## Project Structure (Actual — as of Step 2 completion)
+## Project Structure (Actual — as of Step 4 completion)
 
 Files marked with `[planned]` do not exist yet and will be created in later steps.
 
@@ -129,7 +129,44 @@ kubecenter/
 │   │
 │   └── Dockerfile                     # Multi-stage: Go build → distroless/static
 │
-│   # [planned] frontend/              # Deno 2.x + Fresh 2.x frontend (Step 4+)
+├── frontend/                          # Deno 2.x + Fresh 2.x frontend
+│   ├── deno.json                      # Deno config — imports, JSX precompile, Vite, Tailwind v4
+│   ├── deno.lock                      # Lock file
+│   ├── main.ts                        # Fresh app entrypoint — fsRoutes, Vite plugin, Tailwind
+│   ├── client.ts                      # Client-side hydration entrypoint (required by Fresh 2)
+│   ├── vite.config.ts                 # Vite config with Fresh + Tailwind plugins
+│   ├── utils.ts                       # createDefine<State>() typed helper
+│   ├── Dockerfile                     # Multi-stage: deno install → deno build → serve
+│   ├── assets/
+│   │   └── styles.css                 # Tailwind v4 @import + @theme tokens
+│   ├── lib/
+│   │   ├── api.ts                     # Typed fetch wrapper — Bearer injection, 401 auto-refresh, error parsing
+│   │   ├── auth.ts                    # Client-only auth state — login, logout, fetchCurrentUser (Preact signals)
+│   │   ├── constants.ts               # BACKEND_URL, CLUSTER_ID, NAV_SECTIONS
+│   │   └── k8s-types.ts              # APIResponse<T>, APIError, UserInfo type definitions
+│   ├── routes/
+│   │   ├── _app.tsx                   # HTML shell — <head>, viewport, stylesheet link
+│   │   ├── _layout.tsx                # App layout — Sidebar + TopBar + main content area
+│   │   ├── _middleware.ts             # Security headers (CSP, X-Frame-Options, XCTO, Referrer-Policy)
+│   │   ├── _error.tsx                 # Error page (404, 500)
+│   │   ├── index.tsx                  # Dashboard page (renders Dashboard island)
+│   │   ├── login.tsx                  # Login page (renders LoginForm island)
+│   │   └── api/
+│   │       └── [...path].ts           # BFF proxy — allowlisted headers, SSRF protection, timeout
+│   ├── islands/
+│   │   ├── Dashboard.tsx              # Cluster overview — stat cards, cluster details
+│   │   ├── LoginForm.tsx              # Login form with error handling
+│   │   ├── Sidebar.tsx                # Collapsible nav sidebar with resource sections
+│   │   └── TopBar.tsx                 # Namespace selector, cluster indicator, user menu
+│   └── components/
+│       ├── ui/
+│       │   ├── Button.tsx             # Reusable button (variants: primary, secondary, danger, ghost)
+│       │   ├── Card.tsx               # Card container with optional title
+│       │   └── Input.tsx              # Form input with label and error state
+│       ├── k8s/
+│       │   └── ResourceIcon.tsx       # SVG icons for k8s resource types
+│       └── layout/
+│           └── EmptyState.tsx         # Empty state placeholder
 │
 ├── helm/
 │   └── kubecenter/                    # Helm chart (skeleton — Step 1)
@@ -148,9 +185,12 @@ kubecenter/
 │   └── feat-kubecenter-phase1-mvp.md  # Full 15-step implementation plan with progress tracker
 │
 ├── todos/                             # Tracked findings and improvements (file-based todo system)
-│   ├── 001-014: complete              # First review — all fixed
-│   ├── 015-020, 022-023: pending      # Re-review findings — deferred
-│   └── 021: complete                  # Handler integration tests
+│   ├── 001-014: complete              # Step 2 review — all fixed
+│   ├── 015-020, 022-023: pending      # Step 2 deferred findings
+│   ├── 021: complete                  # Handler integration tests
+│   ├── 024-043: complete              # Step 3 review — all fixed
+│   ├── 044-066: Step 4 review         # 5 P1 + 7 P2 fixed, 12 deferred (P2/P3)
+│   └── 054,056-060,062-066: pending   # Step 4 deferred findings
 │
 ├── .github/
 │   └── workflows/
@@ -206,7 +246,7 @@ kubecenter/
 
 ## API Design
 
-### Implemented Endpoints (as of Step 2)
+### Implemented Endpoints (as of Step 4)
 
 ```
 # Public (no auth)
@@ -221,6 +261,21 @@ GET    /api/v1/auth/providers          # List configured auth providers (current
 # Authenticated (requires Bearer token + X-Requested-With header for CSRF)
 GET    /api/v1/auth/me                 # Current user info + k8s RBAC summary (SelfSubjectRulesReview)
 GET    /api/v1/cluster/info            # Cluster version, node count, KubeCenter version
+
+# Resource CRUD (15 types — Step 3)
+GET    /api/v1/resources/:kind                    # List across all namespaces
+GET    /api/v1/resources/:kind/:namespace          # List in namespace
+GET    /api/v1/resources/:kind/:namespace/:name    # Get specific resource
+POST   /api/v1/resources/:kind/:namespace          # Create resource
+PUT    /api/v1/resources/:kind/:namespace/:name    # Update resource
+DELETE /api/v1/resources/:kind/:namespace/:name    # Delete resource
+POST   /api/v1/resources/nodes/:name/cordon        # Cordon/uncordon node
+POST   /api/v1/resources/nodes/:name/drain         # Drain node (async, returns task ID)
+GET    /api/v1/tasks/:taskID                       # Poll long-running task status
+
+# Frontend BFF Proxy (Step 4 — routes/api/[...path].ts)
+# All /api/* requests from the browser are proxied through the Fresh BFF to the Go backend.
+# The proxy validates paths (v1/ prefix, no traversal), allowlists headers, and adds a 30s timeout.
 ```
 
 ### Full Planned REST Endpoints (Go Backend)
@@ -380,21 +435,23 @@ Every wizard follows this data flow:
 ```makefile
 make dev              # Alias for dev-backend
 make dev-backend      # cd backend && go run ./cmd/kubecenter --config ""
-make build            # Alias for build-backend
+make dev-frontend     # cd frontend && deno task dev (Vite dev server on :5173)
+make build            # Build both backend and frontend
 make build-backend    # go build with ldflags (version, commit, date) → bin/kubecenter
-make test             # Alias for test-backend
+make build-frontend   # cd frontend && deno task build (outputs to _fresh/)
+make test             # Run all tests (backend + frontend)
 make test-backend     # go test ./... -race -cover -count=1
-make lint             # go vet ./...
-make docker-build     # Docker build for backend
+make test-frontend    # cd frontend && deno test -A
+make lint             # Lint both backend and frontend
+make lint-backend     # go vet ./...
+make lint-frontend    # deno lint && deno fmt --check
+make docker-build     # Docker build for both backend and frontend
 make helm-lint        # helm lint helm/kubecenter
 make helm-template    # helm template (dry-run)
-make clean            # rm -rf backend/bin
+make clean            # rm -rf backend/bin frontend/_fresh
 ```
 
 Targets not yet added (planned for later steps):
-- `make dev-frontend` (Step 4)
-- `make build-frontend` (Step 4)
-- `make test-frontend` (Step 4)
 - `make test-e2e` (Step 15)
 - `make docker-push` (Step 13)
 
@@ -425,14 +482,16 @@ Dependencies not yet added (will be added in later steps):
 - `grafana-api-golang-client` (Step 9: Grafana integration)
 - `mattn/go-sqlite3` or `modernc.org/sqlite` (Step 14: audit persistence)
 
-### Deno Config (frontend/deno.json) — PLANNED, not yet created
+### Deno Config (frontend/deno.json)
 
-**NOTE:** The plan identified corrections from the original spec. The actual deno.json when created should use:
-- `"jsx": "precompile"` (NOT `"react-jsx"`) for Fresh 2 SSR performance
+Key configuration choices:
+- `"jsx": "precompile"` with `jsxImportSource: "preact"` for Fresh 2 SSR performance
 - `jsr:` and `npm:` specifiers (NOT `https://esm.sh/` or `https://deno.land/x/`)
-- Fresh 2.x from JSR `@fresh/core` (NOT `$fresh/`)
+- Fresh 2.x from JSR `@fresh/core@^2.2.0`
+- `nodeModulesDir: "manual"` required for Vite compatibility
 - Requires `vite.config.ts` and `client.ts` at frontend root (Fresh 2 uses Vite)
 - No `fresh.config.ts` or `tailwind.config.ts` (Tailwind v4 is CSS-first via `@theme`)
+- `"types": ["vite/client"]` in compilerOptions for Vite type support
 
 ---
 
@@ -459,7 +518,7 @@ Configuration uses [koanf](https://github.com/knadh/koanf) with `KUBECENTER_` pr
 ### Running Locally
 
 ```bash
-# Start backend against a kind cluster
+# Start backend against a kind/k3s cluster
 KUBECENTER_DEV=true \
 KUBECENTER_AUTH_JWTSECRET="your-secret-minimum-32-bytes-long" \
 KUBECENTER_AUTH_SETUPTOKEN="your-setup-token" \
@@ -467,11 +526,19 @@ KUBECENTER_AUTH_SETUPTOKEN="your-setup-token" \
 
 # Or use make (uses default config, no JWT secret = random key per restart)
 make dev-backend
+
+# Start frontend (in a separate terminal)
+make dev-frontend
+# Frontend dev server at http://localhost:5173 (Vite HMR)
+# BFF proxy forwards /api/* requests to backend at localhost:8080
 ```
 
 When `KUBECENTER_DEV=true`, the k8s client uses kubeconfig (~/.kube/config) instead of in-cluster config.
 
 If no JWT secret is configured, a random key is generated (tokens won't survive restarts).
+
+**Frontend environment variables:**
+- `BACKEND_URL` — Backend base URL (default: `http://localhost:8080`, server-side only)
 
 ### Rate Limiter Behavior
 
@@ -481,22 +548,27 @@ The rate limiter uses a **single 5 req/min bucket per IP** shared across ALL rat
 
 ### Prerequisites
 - Go 1.26+
-- kind (Kubernetes in Docker) for local testing
+- Deno 2.x+
+- kind (Kubernetes in Docker) or k3s for local testing
 - Helm 3.x
 - kubectl
 
 ### Local Development Flow
 ```bash
-# 1. Create local kind cluster
+# 1. Create local kind cluster (or use existing k3s homelab)
 kind create cluster --name kubecenter
 
-# 2. Start backend in dev mode (connects to kind cluster via kubeconfig)
+# 2. Start backend in dev mode (connects to cluster via kubeconfig)
 KUBECENTER_DEV=true \
 KUBECENTER_AUTH_JWTSECRET="test-secret-for-dev-minimum-32-bytes" \
 KUBECENTER_AUTH_SETUPTOKEN="dev-setup-token" \
   cd backend && go run ./cmd/kubecenter
 
-# 3. Backend API at http://localhost:8080
+# 3. Start frontend in dev mode (in a separate terminal)
+cd frontend && deno task dev
+# Frontend at http://localhost:5173 — proxies /api/* to backend
+
+# 4. Backend API at http://localhost:8080
 #    Health: curl http://localhost:8080/healthz
 #    Setup:  curl -X POST http://localhost:8080/api/v1/setup/init \
 #              -H "Content-Type: application/json" \
@@ -566,7 +638,7 @@ Build in this order to have a working system at each step:
 1. ~~**Backend skeleton** — HTTP server, health check, config loading, in-cluster k8s client~~ ✅
 2. ~~**Auth system** — Local accounts with JWT, login/logout endpoints, auth middleware~~ ✅
 3. ~~**Resource listing** — Informer-backed CRUD for 15 resource types, RBAC, pagination, validation~~ ✅
-4. **Frontend skeleton** — Fresh app with layout, sidebar, login page, dashboard home
+4. ~~**Frontend skeleton** — Fresh app with layout, sidebar, login page, dashboard home~~ ✅
 5. **Resource browser** — Tables for pods, deployments, services with real-time WebSocket updates
 6. **Resource detail** — Detail views with tabs (Overview, YAML, Events, Metrics placeholder)
 7. **YAML apply** — Monaco editor, validation, diff, server-side apply
@@ -599,6 +671,98 @@ Even in Phase 1, structure the code to support multi-cluster later:
 - **Frontend tests:** Deno's built-in test runner for utility functions. Component tests with Preact Testing Library.
 - **E2E tests:** Use a `kind` cluster with Playwright or Cypress driving the browser. Test the full wizard→apply→verify cycle.
 - **Helm tests:** `helm lint`, `helm template` validation, and `helm test` hooks.
+
+---
+
+## Pre-Merge Requirements
+
+**Every PR must be smoke tested against the homelab cluster before merging.** This is a hard requirement — do not merge PRs based solely on unit tests and code review.
+
+### Homelab Smoke Test Procedure
+
+The homelab is a 3-node k3s cluster (ARM64) accessible via the default kubeconfig context. The smoke test verifies the full stack against real Kubernetes resources.
+
+**Prerequisites:**
+- `kubectl cluster-info` confirms connectivity to the homelab k3s cluster
+- No other KubeCenter processes running on ports 8080/5173
+
+**Steps:**
+
+1. **Start backend** against the homelab:
+   ```bash
+   KUBECENTER_DEV=true \
+   KUBECENTER_AUTH_JWTSECRET="test-secret-for-dev-minimum-32-bytes-long" \
+   KUBECENTER_AUTH_SETUPTOKEN="dev-setup-token" \
+     cd backend && go run ./cmd/kubecenter --config ""
+   ```
+
+2. **Start frontend** (if frontend changes are in scope):
+   ```bash
+   cd frontend && deno task dev
+   ```
+
+3. **Create admin and authenticate:**
+   ```bash
+   # Setup (first run only — in-memory, lost on restart)
+   curl -s -X POST http://localhost:8080/api/v1/setup/init \
+     -H "Content-Type: application/json" \
+     -H "X-Requested-With: XMLHttpRequest" \
+     -d '{"username":"admin","password":"Sm0keTest2026!","setupToken":"dev-setup-token"}'
+
+   # Login
+   curl -s -X POST http://localhost:8080/api/v1/auth/login \
+     -H "Content-Type: application/json" \
+     -H "X-Requested-With: XMLHttpRequest" \
+     -d '{"username":"admin","password":"Sm0keTest2026!"}'
+   ```
+
+4. **Verify key endpoints** return real data (not empty/error):
+   - `GET /healthz` → `{"data":{"status":"ok"}}`
+   - `GET /readyz` → `{"data":{"status":"ready"}}`
+   - `GET /api/v1/cluster/info` → k8s version, node count > 0
+   - `GET /api/v1/resources/namespaces` → non-empty list
+   - `GET /api/v1/resources/pods?limit=2` → real pods with metadata.total
+   - `GET /api/v1/resources/nodes` → 3 nodes
+   - `GET /api/v1/auth/me` → user info with roles
+
+5. **If frontend is in scope**, also verify:
+   - Login page renders and login flow works in the browser
+   - Dashboard shows real cluster data after login
+   - Page refresh preserves session (refresh token cookie works)
+   - BFF proxy SSRF protection blocks `../` and `%2e` paths
+   - Security headers present (CSP, X-Frame-Options, X-Content-Type-Options)
+   - Namespace selector populates with real namespaces
+
+6. **RBAC note:** The impersonated `admin` user needs a ClusterRoleBinding to `cluster-admin` in the homelab for full resource access. If resources return 403, create:
+   ```bash
+   kubectl apply -f - <<EOF
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: ClusterRoleBinding
+   metadata:
+     name: kubecenter-admin-binding
+   subjects:
+     - kind: User
+       name: admin
+       apiGroup: rbac.authorization.k8s.io
+   roleRef:
+     kind: ClusterRole
+     name: cluster-admin
+     apiGroup: rbac.authorization.k8s.io
+   EOF
+   ```
+
+7. **Clean up** after testing:
+   ```bash
+   # Kill backend and frontend processes
+   lsof -ti:8080 | xargs kill 2>/dev/null
+   lsof -ti:5173 | xargs kill 2>/dev/null
+   ```
+
+### When to Run Smoke Tests
+
+- **Always before merging any PR** — no exceptions
+- After fixing code review findings
+- After any change to: auth flow, BFF proxy, API endpoints, middleware, or k8s client
 
 ---
 

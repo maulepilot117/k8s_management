@@ -50,29 +50,30 @@ Kubernetes Cluster
 - Go 1.26+
 - Deno 2.x+
 - Docker + Docker Compose
-- [kind](https://kind.sigs.k8s.io/) for local testing
+- [kind](https://kind.sigs.k8s.io/) or k3s for local testing
 - Helm 3.x
 - kubectl
 
 ### Local Development
 
 ```bash
-# Create a local kind cluster
+# Create a local kind cluster (or use existing k3s)
 kind create cluster --name kubecenter
 
 # Start the backend (connects via kubeconfig)
 make dev-backend
 
-# Backend API available at http://localhost:8080
-# Health check: curl http://localhost:8080/healthz
-# Cluster info (requires auth): curl http://localhost:8080/api/v1/cluster/info
+# Start the frontend (in a separate terminal)
+make dev-frontend
+# Frontend at http://localhost:5173 — proxies /api/* to backend at :8080
 
 # Set up the first admin account
 curl -X POST http://localhost:8080/api/v1/setup/init \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"changeme","setupToken":"your-token"}'
 
-# Login
+# Login via browser at http://localhost:5173/login
+# Or via CLI:
 curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -H "X-Requested-With: XMLHttpRequest" \
@@ -88,10 +89,16 @@ helm install kubecenter ./helm/kubecenter
 ## Build
 
 ```bash
+make build            # Build both backend and frontend
 make build-backend    # Build Go binary
-make test-backend     # Run tests with race detection
-make lint             # Run go vet
-make docker-build     # Build container image
+make build-frontend   # Build Fresh frontend (outputs to _fresh/)
+make test             # Run all tests (backend + frontend)
+make test-backend     # Run Go tests with race detection
+make test-frontend    # Run Deno tests
+make lint             # Lint both backend and frontend
+make lint-backend     # Run go vet
+make lint-frontend    # Run deno lint + deno fmt --check
+make docker-build     # Build container images for both
 make helm-lint        # Lint Helm chart
 ```
 
@@ -165,7 +172,11 @@ kubecenter/
 │   │   │   └── resources/ # CRUD handlers for 15 k8s resource types
 │   │   └── config/       # App configuration
 │   └── pkg/              # Public packages (api types, version)
-├── frontend/             # Deno 2.x + Fresh 2.x (Phase 1, Step 4+)
+├── frontend/             # Deno 2.x + Fresh 2.x frontend
+│   ├── routes/           # Pages, layout, middleware, BFF proxy
+│   ├── islands/          # Interactive components (Dashboard, Login, Sidebar, TopBar)
+│   ├── components/       # Server-rendered UI components
+│   └── lib/              # API client, auth state, types, constants
 ├── helm/kubecenter/      # Helm chart
 ├── todos/                # Tracked findings and improvements
 ├── .github/workflows/    # CI pipeline
@@ -177,8 +188,9 @@ kubecenter/
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Follow the commit convention: `feat(scope): description`, `fix(scope): description`
-4. Ensure `make lint` and `make test-backend` pass
-5. Submit a pull request
+4. Ensure `make lint` and `make test` pass
+5. **Smoke test against the homelab cluster before merging** (see [CLAUDE.md](CLAUDE.md#pre-merge-requirements))
+6. Submit a pull request
 
 ## License
 
