@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/go-chi/chi/v5"
+	"github.com/kubecenter/kubecenter/internal/k8s/resources"
 	"github.com/kubecenter/kubecenter/internal/server/middleware"
 )
 
@@ -41,9 +42,17 @@ func (s *Server) registerRoutes() {
 func (s *Server) registerResourceRoutes(ar chi.Router) {
 	h := s.ResourceHandler
 
-	// Task polling endpoint
+	// Task polling endpoint (no name/namespace params to validate)
 	ar.Get("/tasks/{taskID}", h.HandleGetTask)
 
+	// All resource routes validate {name}/{namespace} URL params
+	ar.Group(func(rr chi.Router) {
+		rr.Use(resources.ValidateURLParams)
+		s.registerResourceEndpoints(rr, h)
+	})
+}
+
+func (s *Server) registerResourceEndpoints(ar chi.Router, h *resources.Handler) {
 	// Deployments
 	ar.Get("/resources/deployments", h.HandleListDeployments)
 	ar.Get("/resources/deployments/{namespace}", h.HandleListDeployments)

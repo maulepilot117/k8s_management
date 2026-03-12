@@ -20,7 +20,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 
 	k8s "github.com/kubecenter/kubecenter/internal/k8s"
@@ -33,31 +32,8 @@ func testHandler(t *testing.T, objs ...runtime.Object) (*Handler, *fake.Clientse
 	fakeCS := fake.NewSimpleClientset(objs...)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	factory := informers.NewSharedInformerFactory(fakeCS, 0)
-	// Register all informers
-	factory.Core().V1().Pods().Informer()
-	factory.Core().V1().Services().Informer()
-	factory.Core().V1().ConfigMaps().Informer()
-	factory.Core().V1().Namespaces().Informer()
-	factory.Core().V1().Nodes().Informer()
-	factory.Core().V1().PersistentVolumeClaims().Informer()
-	factory.Core().V1().Events().Informer()
-	factory.Apps().V1().Deployments().Informer()
-	factory.Apps().V1().StatefulSets().Informer()
-	factory.Apps().V1().DaemonSets().Informer()
-	factory.Batch().V1().Jobs().Informer()
-	factory.Batch().V1().CronJobs().Informer()
-	factory.Networking().V1().Ingresses().Informer()
-	factory.Networking().V1().NetworkPolicies().Informer()
-	factory.Rbac().V1().Roles().Informer()
-	factory.Rbac().V1().ClusterRoles().Informer()
-	factory.Rbac().V1().RoleBindings().Informer()
-	factory.Rbac().V1().ClusterRoleBindings().Informer()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	factory.Start(ctx.Done())
-	factory.WaitForCacheSync(ctx.Done())
 
 	im := k8s.NewInformerManager(fakeCS, logger)
 	im.Start(ctx)
@@ -512,5 +488,116 @@ func TestErrorMapping(t *testing.T) {
 	// Informer lister returns a not-found error
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for missing deployment, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAccessDenied_List(t *testing.T) {
+	h, _ := testHandler(t)
+	h.AccessChecker = NewAlwaysDenyAccessChecker()
+
+	rr := httptest.NewRecorder()
+	req := requestWithUser("GET", "/api/v1/resources/deployments/default", "")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("namespace", "default")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	h.HandleListDeployments(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAccessDenied_Get(t *testing.T) {
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "nginx", Namespace: "default"},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "nginx"}},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "nginx"}},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "nginx", Image: "nginx"}}},
+			},
+		},
+	}
+
+	h, _ := testHandler(t, dep)
+	h.AccessChecker = NewAlwaysDenyAccessChecker()
+
+	rr := httptest.NewRecorder()
+	req := requestWithUser("GET", "/api/v1/resources/deployments/default/nginx", "")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("namespace", "default")
+	rctx.URLParams.Add("name", "nginx")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	h.HandleGetDeployment(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestInvalidLabelSelector(t *testing.T) {
+	h, _ := testHandler(t)
+	rr := httptest.NewRecorder()
+	req := requestWithUser("GET", "/api/v1/resources/deployments/default?labelSelector=!!!invalid", "")
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("namespace", "default")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	h.HandleListDeployments(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid label selector, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestValidateK8sName(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		valid bool
+	}{
+		{"empty", "", true},
+		{"simple", "nginx", true},
+		{"with-dashes", "my-deployment", true},
+		{"with-dots", "my.deployment", true},
+		{"with-numbers", "nginx-123", true},
+		{"max-length", strings.Repeat("a", 253), true},
+		{"too-long", strings.Repeat("a", 254), false},
+		{"starts-with-dash", "-nginx", false},
+		{"ends-with-dash", "nginx-", false},
+		{"uppercase", "Nginx", false},
+		{"spaces", "my deployment", false},
+		{"special-chars", "nginx@latest", false},
+		{"slashes", "../etc/passwd", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ValidateK8sName(tt.input); got != tt.valid {
+				t.Errorf("ValidateK8sName(%q) = %v, want %v", tt.input, got, tt.valid)
+			}
+		})
+	}
+}
+
+func TestHasActiveTask(t *testing.T) {
+	tm := NewTaskManager()
+	id := tm.Create("drain", "worker-1", "", "admin")
+
+	if !tm.HasActiveTask("drain", "worker-1") {
+		t.Error("expected active task for drain/worker-1")
+	}
+	if tm.HasActiveTask("drain", "worker-2") {
+		t.Error("did not expect active task for drain/worker-2")
+	}
+
+	tm.UpdateStatus(id, TaskStatusComplete, "done", 100)
+	if tm.HasActiveTask("drain", "worker-1") {
+		t.Error("completed task should not count as active")
 	}
 }

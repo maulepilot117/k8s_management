@@ -10,8 +10,6 @@ type Response struct {
 // Metadata contains pagination info for list responses.
 type Metadata struct {
 	Total    int    `json:"total"`
-	Page     int    `json:"page,omitempty"`
-	PageSize int    `json:"pageSize,omitempty"`
 	Continue string `json:"continue,omitempty"`
 }
 

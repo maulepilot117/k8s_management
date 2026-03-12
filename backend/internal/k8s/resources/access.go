@@ -39,6 +39,7 @@ type AccessChecker struct {
 	cache       sync.Map // map[accessCacheKey]accessCacheEntry
 	logger      *slog.Logger
 	alwaysAllow bool // for testing only
+	alwaysDeny  bool // for testing only
 }
 
 // NewAccessChecker creates an AccessChecker that verifies user permissions.
@@ -56,6 +57,9 @@ func NewAccessChecker(clientFactory interface {
 func (ac *AccessChecker) CanAccess(ctx context.Context, username string, groups []string, verb, resource, namespace string) (bool, error) {
 	if ac.alwaysAllow {
 		return true, nil
+	}
+	if ac.alwaysDeny {
+		return false, nil
 	}
 	key := accessCacheKey{
 		username:  username,
@@ -118,6 +122,16 @@ func NewAlwaysAllowAccessChecker() *AccessChecker {
 		clientFactory: nil, // never used — CanAccess is short-circuited via alwaysAllow
 		logger:        slog.Default(),
 		alwaysAllow:   true,
+	}
+}
+
+// NewAlwaysDenyAccessChecker returns an AccessChecker that denies every request.
+// Intended for unit tests where RBAC denial is under test.
+func NewAlwaysDenyAccessChecker() *AccessChecker {
+	return &AccessChecker{
+		clientFactory: nil,
+		logger:        slog.Default(),
+		alwaysDeny:    true,
 	}
 }
 

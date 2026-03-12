@@ -9,6 +9,13 @@ import (
 
 // RBAC Viewer — read-only handlers for Roles, ClusterRoles, and Bindings.
 
+const (
+	kindRole               = "roles"
+	kindClusterRole        = "clusterroles"
+	kindRoleBinding        = "rolebindings"
+	kindClusterRoleBinding = "clusterrolebindings"
+)
+
 func (h *Handler) HandleListRoles(w http.ResponseWriter, r *http.Request) {
 	user, ok := requireUser(w, r)
 	if !ok {
@@ -24,12 +31,12 @@ func (h *Handler) HandleListRoles(w http.ResponseWriter, r *http.Request) {
 	var all []*rbacv1.Role
 	var err error
 	if params.Namespace != "" {
-		if !h.checkAccess(w, r, user, "list", "roles", params.Namespace) {
+		if !h.checkAccess(w, r, user, "list", kindRole, params.Namespace) {
 			return
 		}
 		all, err = h.Informers.Roles().Roles(params.Namespace).List(sel)
 	} else {
-		if !h.checkAccess(w, r, user, "list", "roles", "") {
+		if !h.checkAccess(w, r, user, "list", kindRole, "") {
 			return
 		}
 		all, err = h.Informers.Roles().List(sel)
@@ -49,7 +56,7 @@ func (h *Handler) HandleGetRole(w http.ResponseWriter, r *http.Request) {
 	}
 	ns := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
-	if !h.checkAccess(w, r, user, "get", "roles", ns) {
+	if !h.checkAccess(w, r, user, "get", kindRole, ns) {
 		return
 	}
 	obj, err := h.Informers.Roles().Roles(ns).Get(name)
@@ -66,7 +73,7 @@ func (h *Handler) HandleListClusterRoles(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	params := parseListParams(r)
-	if !h.checkAccess(w, r, user, "list", "clusterroles", "") {
+	if !h.checkAccess(w, r, user, "list", kindClusterRole, "") {
 		return
 	}
 	sel, ok := parseSelectorOrReject(w, params.LabelSelector)
@@ -88,7 +95,7 @@ func (h *Handler) HandleGetClusterRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := chi.URLParam(r, "name")
-	if !h.checkAccess(w, r, user, "get", "clusterroles", "") {
+	if !h.checkAccess(w, r, user, "get", kindClusterRole, "") {
 		return
 	}
 	obj, err := h.Informers.ClusterRoles().Get(name)
@@ -114,12 +121,12 @@ func (h *Handler) HandleListRoleBindings(w http.ResponseWriter, r *http.Request)
 	var all []*rbacv1.RoleBinding
 	var err error
 	if params.Namespace != "" {
-		if !h.checkAccess(w, r, user, "list", "rolebindings", params.Namespace) {
+		if !h.checkAccess(w, r, user, "list", kindRoleBinding, params.Namespace) {
 			return
 		}
 		all, err = h.Informers.RoleBindings().RoleBindings(params.Namespace).List(sel)
 	} else {
-		if !h.checkAccess(w, r, user, "list", "rolebindings", "") {
+		if !h.checkAccess(w, r, user, "list", kindRoleBinding, "") {
 			return
 		}
 		all, err = h.Informers.RoleBindings().List(sel)

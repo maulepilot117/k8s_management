@@ -102,7 +102,7 @@ All endpoints are prefixed with `/api/v1`. Responses use a standard envelope:
 ```json
 {
   "data": { ... },
-  "metadata": { "total": 42, "page": 1, "pageSize": 20 },
+  "metadata": { "total": 42, "continue": "token" },
   "error": null
 }
 ```
@@ -120,9 +120,20 @@ Key endpoints:
 | GET | `/api/v1/auth/providers` | No | List configured auth providers |
 | GET | `/api/v1/auth/me` | Yes | Current user info + RBAC summary |
 | GET | `/api/v1/cluster/info` | Yes | Cluster version, node count, KubeCenter version |
-| GET | `/api/v1/resources/:kind/:namespace` | Yes | List resources by kind and namespace |
-| POST | `/api/v1/yaml/apply` | Yes | Validate and apply YAML (server-side apply) |
-| WS | `/api/v1/ws/resources` | Yes | Real-time resource event stream |
+
+Resource CRUD (15 types: deployments, statefulsets, daemonsets, pods, services, ingresses, configmaps, secrets, namespaces, nodes, pvcs, jobs, cronjobs, networkpolicies, RBAC):
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/v1/resources/:kind` | Yes | List across all namespaces |
+| GET | `/api/v1/resources/:kind/:namespace` | Yes | List in namespace |
+| GET | `/api/v1/resources/:kind/:namespace/:name` | Yes | Get specific resource |
+| POST | `/api/v1/resources/:kind/:namespace` | Yes | Create resource |
+| PUT | `/api/v1/resources/:kind/:namespace/:name` | Yes | Update resource |
+| DELETE | `/api/v1/resources/:kind/:namespace/:name` | Yes | Delete resource |
+| POST | `/api/v1/resources/nodes/:name/cordon` | Yes | Cordon node |
+| POST | `/api/v1/resources/nodes/:name/drain` | Yes | Drain node (async, returns task ID) |
+| GET | `/api/v1/tasks/:taskID` | Yes | Poll long-running task status |
 
 See [CLAUDE.md](CLAUDE.md) for the complete API reference.
 
@@ -150,7 +161,8 @@ kubecenter/
 │   │   │   └── middleware/ # Auth, CSRF, rate limiting, CORS
 │   │   ├── auth/         # JWT, local accounts, RBAC, sessions
 │   │   ├── audit/        # Audit logging interface + slog impl
-│   │   ├── k8s/          # Client factory, informers
+│   │   ├── k8s/          # Client factory, informers, resource handlers
+│   │   │   └── resources/ # CRUD handlers for 15 k8s resource types
 │   │   └── config/       # App configuration
 │   └── pkg/              # Public packages (api types, version)
 ├── frontend/             # Deno 2.x + Fresh 2.x (Phase 1, Step 4+)

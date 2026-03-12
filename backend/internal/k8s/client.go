@@ -33,6 +33,7 @@ type ClientFactory struct {
 	cache         sync.Map // map[string]cachedClient
 	clusterID     string
 	logger        *slog.Logger
+	testOverride  *kubernetes.Clientset // if set, ClientForUser returns this directly
 }
 
 // NewClientFactory creates a ClientFactory using in-cluster config with
@@ -97,6 +98,9 @@ func (f *ClientFactory) BaseConfig() *rest.Config {
 // ClientForUser returns an impersonating clientset for the given user.
 // Results are cached for 5 minutes keyed by hash(username+groups).
 func (f *ClientFactory) ClientForUser(username string, groups []string) (*kubernetes.Clientset, error) {
+	if f.testOverride != nil {
+		return f.testOverride, nil
+	}
 	key := cacheKey(username, groups)
 
 	if val, ok := f.cache.Load(key); ok {
@@ -148,6 +152,17 @@ func (f *ClientFactory) StartCacheSweeper(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// NewTestClientFactory returns a ClientFactory whose ClientForUser always
+// returns the given clientset, bypassing impersonation. For use in tests only.
+func NewTestClientFactory(cs *kubernetes.Clientset) *ClientFactory {
+	return &ClientFactory{
+		baseClientset: cs,
+		clusterID:     "test",
+		logger:        slog.Default(),
+		testOverride:  cs,
+	}
 }
 
 // cacheKey produces a collision-resistant key from username and groups.

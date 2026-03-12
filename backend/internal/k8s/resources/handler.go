@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -29,7 +30,6 @@ type Handler struct {
 type ListParams struct {
 	Namespace     string
 	LabelSelector string
-	FieldSelector string
 	Limit         int
 	Continue      string
 }
@@ -46,7 +46,6 @@ func parseListParams(r *http.Request) ListParams {
 	return ListParams{
 		Namespace:     chi.URLParam(r, "namespace"),
 		LabelSelector: r.URL.Query().Get("labelSelector"),
-		FieldSelector: r.URL.Query().Get("fieldSelector"),
 		Limit:         limit,
 		Continue:      r.URL.Query().Get("continue"),
 	}
@@ -156,4 +155,31 @@ func writeData(w http.ResponseWriter, data any) {
 // writeCreated writes a 201 Created response with the standard envelope.
 func writeCreated(w http.ResponseWriter, data any) {
 	writeJSON(w, http.StatusCreated, api.Response{Data: data})
+}
+
+// k8sNameRegexp matches valid RFC 1123 DNS labels used by Kubernetes for resource names.
+// Must be lowercase alphanumeric, may contain '-' and '.', max 253 chars.
+var k8sNameRegexp = regexp.MustCompile(`^[a-z0-9]([a-z0-9.\-]{0,251}[a-z0-9])?$`)
+
+// ValidateK8sName checks whether s is a valid Kubernetes resource name (RFC 1123 DNS label).
+func ValidateK8sName(s string) bool {
+	return s == "" || k8sNameRegexp.MatchString(s)
+}
+
+// ValidateURLParams is a chi middleware that validates {name} and {namespace} URL params
+// against RFC 1123 DNS label rules, returning 400 before invalid values reach the k8s API.
+func ValidateURLParams(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "name")
+		ns := chi.URLParam(r, "namespace")
+		if !ValidateK8sName(name) {
+			writeError(w, http.StatusBadRequest, "invalid resource name: "+name, "")
+			return
+		}
+		if !ValidateK8sName(ns) {
+			writeError(w, http.StatusBadRequest, "invalid namespace: "+ns, "")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
