@@ -93,8 +93,10 @@ export async function api<T>(
 
   let res = await doFetch();
 
-  // On 401, attempt a single token refresh and retry
-  if (res.status === 401 && accessToken) {
+  // On 401, attempt a single token refresh and retry.
+  // Check even when accessToken is null — after a full page reload the
+  // in-memory token is gone but the httpOnly refresh cookie may still exist.
+  if (res.status === 401) {
     if (!refreshPromise) {
       refreshPromise = refreshAccessToken().finally(() => {
         refreshPromise = null;
