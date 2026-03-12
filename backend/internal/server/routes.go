@@ -1,9 +1,11 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -14,6 +16,14 @@ import (
 	"github.com/kubecenter/kubecenter/pkg/version"
 	"k8s.io/apimachinery/pkg/labels"
 )
+
+const (
+	maxAuthBodySize = 1 << 16 // 64 KB — more than enough for auth payloads
+	maxPasswordLen  = 128
+	maxUsernameLen  = 253 // k8s username limit
+)
+
+var validUsername = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$`)
 
 func (s *Server) registerRoutes() {
 	// Health endpoints — no auth required (skipped by auth middleware)
@@ -100,6 +110,8 @@ func (s *Server) handleSetupInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodySize)
+
 	var req struct {
 		Username   string `json:"username"`
 		Password   string `json:"password"`
@@ -119,20 +131,29 @@ func (s *Server) handleSetupInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Password) < 8 {
+	if len(req.Username) > maxUsernameLen || !validUsername.MatchString(req.Username) {
 		writeJSON(w, http.StatusBadRequest, api.Response{
-			Error: &api.APIError{Code: 400, Message: "password must be at least 8 characters"},
+			Error: &api.APIError{Code: 400, Message: "invalid username format"},
 		})
 		return
 	}
 
-	// Verify setup token if configured
-	if s.Config.Auth.SetupToken != "" && req.SetupToken != s.Config.Auth.SetupToken {
-		s.Logger.Warn("setup init rejected: invalid setup token", "remoteAddr", r.RemoteAddr)
-		writeJSON(w, http.StatusForbidden, api.Response{
-			Error: &api.APIError{Code: 403, Message: "invalid setup token"},
+	if len(req.Password) < 8 || len(req.Password) > maxPasswordLen {
+		writeJSON(w, http.StatusBadRequest, api.Response{
+			Error: &api.APIError{Code: 400, Message: "password must be 8-128 characters"},
 		})
 		return
+	}
+
+	// Verify setup token if configured — constant-time comparison
+	if s.Config.Auth.SetupToken != "" {
+		if subtle.ConstantTimeCompare([]byte(req.SetupToken), []byte(s.Config.Auth.SetupToken)) != 1 {
+			s.Logger.Warn("setup init rejected: invalid setup token", "remoteAddr", r.RemoteAddr)
+			writeJSON(w, http.StatusForbidden, api.Response{
+				Error: &api.APIError{Code: 403, Message: "invalid setup token"},
+			})
+			return
+		}
 	}
 
 	user, err := s.LocalAuth.CreateUser(req.Username, req.Password, []string{"admin"})
@@ -163,6 +184,8 @@ func (s *Server) handleSetupInit(w http.ResponseWriter, r *http.Request) {
 
 // handleLogin authenticates a user and returns a JWT access token.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodySize)
+
 	var creds auth.Credentials
 	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
 		writeJSON(w, http.StatusBadRequest, api.Response{
@@ -174,6 +197,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if creds.Username == "" || creds.Password == "" {
 		writeJSON(w, http.StatusBadRequest, api.Response{
 			Error: &api.APIError{Code: 400, Message: "username and password are required"},
+		})
+		return
+	}
+
+	if len(creds.Username) > maxUsernameLen || len(creds.Password) > maxPasswordLen {
+		writeJSON(w, http.StatusBadRequest, api.Response{
+			Error: &api.APIError{Code: 400, Message: "invalid credentials"},
 		})
 		return
 	}

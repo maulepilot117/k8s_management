@@ -3,6 +3,7 @@ package middleware
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -11,8 +12,8 @@ import (
 )
 
 const (
-	defaultRate    = 5           // requests per window
-	defaultWindow  = time.Minute // sliding window
+	defaultRate     = 5           // requests per window
+	defaultWindow   = time.Minute // sliding window
 	cleanupInterval = 5 * time.Minute
 )
 
@@ -38,9 +39,10 @@ func NewRateLimiter() *RateLimiter {
 	}
 }
 
-// Allow checks if the given IP is within rate limits.
-// Returns true if the request is allowed, false if rate-limited.
-func (rl *RateLimiter) Allow(ip string) bool {
+// Check tests if the given IP is within rate limits and returns the retry-after
+// duration in seconds if rate-limited. Both values are computed under a single
+// lock acquisition to avoid race conditions.
+func (rl *RateLimiter) Check(ip string) (allowed bool, retryAfterSec int) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -48,28 +50,19 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	b, ok := rl.buckets[ip]
 	if !ok || now.Sub(b.lastReset) >= rl.window {
 		rl.buckets[ip] = &bucket{tokens: 1, lastReset: now}
-		return true
+		return true, 0
 	}
 
 	b.tokens++
-	return b.tokens <= rl.rate
-}
-
-// RetryAfter returns the number of seconds until the rate limit resets for an IP.
-func (rl *RateLimiter) RetryAfter(ip string) int {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	b, ok := rl.buckets[ip]
-	if !ok {
-		return 0
+	if b.tokens <= rl.rate {
+		return true, 0
 	}
 
-	remaining := rl.window - time.Since(b.lastReset)
+	remaining := rl.window - now.Sub(b.lastReset)
 	if remaining <= 0 {
-		return 0
+		return true, 0
 	}
-	return int(remaining.Seconds()) + 1
+	return false, int(remaining.Seconds()) + 1
 }
 
 // StartCleanup removes stale entries periodically.
@@ -100,15 +93,26 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
-// RateLimit returns middleware that applies rate limiting.
-// It extracts the client IP from X-Real-IP (set by chi RealIP middleware).
+// extractIP parses the IP address from r.RemoteAddr, stripping the port.
+// chi's RealIP middleware overwrites RemoteAddr with the client IP from
+// X-Real-IP or X-Forwarded-For headers.
+func extractIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// RemoteAddr may already be just an IP (no port)
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// RateLimit returns middleware that applies rate limiting per client IP.
 func RateLimit(limiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := r.RemoteAddr
+			ip := extractIP(r)
 
-			if !limiter.Allow(ip) {
-				retryAfter := limiter.RetryAfter(ip)
+			allowed, retryAfter := limiter.Check(ip)
+			if !allowed {
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)

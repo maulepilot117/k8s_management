@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,10 @@ import (
 
 	"golang.org/x/crypto/argon2"
 )
+
+// maxConcurrentHashes limits parallel Argon2id operations to prevent OOM.
+// Each hash uses ~64 MB of memory.
+const maxConcurrentHashes = 3
 
 // Argon2id parameters following OWASP recommendations.
 const (
@@ -35,26 +40,36 @@ type storedUser struct {
 // LocalProvider authenticates users against a local account store.
 // User data is held in memory and can be persisted externally (e.g., k8s Secret).
 type LocalProvider struct {
-	mu     sync.RWMutex
-	users  map[string]storedUser // keyed by username
-	logger *slog.Logger
+	mu       sync.RWMutex
+	users    map[string]storedUser // keyed by username
+	logger   *slog.Logger
+	hashSem  chan struct{} // limits concurrent Argon2id operations
 }
 
 // NewLocalProvider creates a LocalProvider.
 func NewLocalProvider(logger *slog.Logger) *LocalProvider {
 	return &LocalProvider{
-		users:  make(map[string]storedUser),
-		logger: logger,
+		users:   make(map[string]storedUser),
+		logger:  logger,
+		hashSem: make(chan struct{}, maxConcurrentHashes),
 	}
 }
 
 func (p *LocalProvider) Type() string { return "local" }
 
 // Authenticate validates credentials against the local store.
-func (p *LocalProvider) Authenticate(_ context.Context, creds Credentials) (*User, error) {
+func (p *LocalProvider) Authenticate(ctx context.Context, creds Credentials) (*User, error) {
 	p.mu.RLock()
 	stored, ok := p.users[creds.Username]
 	p.mu.RUnlock()
+
+	// Acquire hash semaphore to limit concurrent Argon2id operations (each uses ~64 MB).
+	select {
+	case p.hashSem <- struct{}{}:
+		defer func() { <-p.hashSem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	if !ok {
 		// Constant-time: hash the password anyway to prevent timing attacks
@@ -69,7 +84,11 @@ func (p *LocalProvider) Authenticate(_ context.Context, creds Credentials) (*Use
 	}
 
 	hash := argon2.IDKey([]byte(creds.Password), salt, argon2Time, argon2Memory, argon2Threads, argon2KeyLen)
-	if hex.EncodeToString(hash) != stored.PasswordHash {
+	storedHash, err := hex.DecodeString(stored.PasswordHash)
+	if err != nil {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+	if subtle.ConstantTimeCompare(hash, storedHash) != 1 {
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
@@ -84,6 +103,10 @@ func (p *LocalProvider) Authenticate(_ context.Context, creds Credentials) (*Use
 
 // CreateUser adds a new local user with Argon2id-hashed password.
 func (p *LocalProvider) CreateUser(username, password string, roles []string) (*User, error) {
+	// Acquire hash semaphore before the expensive Argon2id operation.
+	p.hashSem <- struct{}{}
+	defer func() { <-p.hashSem }()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

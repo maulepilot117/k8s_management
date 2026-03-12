@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,18 @@ type RBACSummary struct {
 type rbacCacheEntry struct {
 	summary   *RBACSummary
 	expiresAt time.Time
+}
+
+// systemNamespacePrefixes are namespaces filtered from RBAC summaries.
+var systemNamespacePrefixes = []string{"kube-"}
+
+// trackedResources are the resource types we check permissions for.
+var trackedResources = map[string]bool{
+	"pods": true, "deployments": true, "services": true,
+	"configmaps": true, "secrets": true, "ingresses": true,
+	"statefulsets": true, "daemonsets": true, "jobs": true,
+	"networkpolicies": true, "nodes": true, "namespaces": true,
+	"clusterroles": true, "clusterrolebindings": true,
 }
 
 // RBACChecker queries Kubernetes RBAC permissions for users.
@@ -45,6 +58,8 @@ func NewRBACChecker(clientFactory interface {
 }
 
 // GetSummary returns a RBAC permission summary for the given user.
+// Uses SelfSubjectRulesReview (1 API call per namespace) instead of
+// SelfSubjectAccessReview (1 call per resource per verb per namespace).
 // Results are cached for 60 seconds per user.
 func (rc *RBACChecker) GetSummary(ctx context.Context, user *User, namespaces []string) (*RBACSummary, error) {
 	if val, ok := rc.cache.Load(user.Username); ok {
@@ -65,21 +80,32 @@ func (rc *RBACChecker) GetSummary(ctx context.Context, user *User, namespaces []
 		Namespaces:    make(map[string]map[string][]string),
 	}
 
-	// Check cluster-scoped resources
-	clusterResources := []string{"nodes", "namespaces", "clusterroles", "clusterrolebindings"}
-	for _, resource := range clusterResources {
-		verbs := rc.checkVerbs(ctx, cs, "", resource)
-		if len(verbs) > 0 {
-			summary.ClusterScoped[resource] = verbs
+	// Check cluster-scoped permissions via empty-namespace rules review
+	clusterRules, err := rc.getRulesForNamespace(ctx, cs, "")
+	if err != nil {
+		rc.logger.Warn("failed to get cluster-scoped rules", "error", err, "user", user.Username)
+	} else {
+		for resource, verbs := range clusterRules {
+			if len(verbs) > 0 {
+				summary.ClusterScoped[resource] = verbs
+			}
 		}
 	}
 
-	// Check namespace-scoped resources
-	nsResources := []string{"pods", "deployments", "services", "configmaps", "secrets", "ingresses", "statefulsets", "daemonsets", "jobs", "networkpolicies"}
+	// Check namespace-scoped permissions, filtering system namespaces
 	for _, ns := range namespaces {
+		if isSystemNamespace(ns) {
+			continue
+		}
+
+		nsRules, err := rc.getRulesForNamespace(ctx, cs, ns)
+		if err != nil {
+			rc.logger.Debug("failed to get rules for namespace", "namespace", ns, "error", err)
+			continue
+		}
+
 		nsPerms := make(map[string][]string)
-		for _, resource := range nsResources {
-			verbs := rc.checkVerbs(ctx, cs, ns, resource)
+		for resource, verbs := range nsRules {
 			if len(verbs) > 0 {
 				nsPerms[resource] = verbs
 			}
@@ -97,31 +123,50 @@ func (rc *RBACChecker) GetSummary(ctx context.Context, user *User, namespaces []
 	return summary, nil
 }
 
-// checkVerbs checks which verbs a user has for a resource in a namespace.
-func (rc *RBACChecker) checkVerbs(ctx context.Context, cs *kubernetes.Clientset, namespace, resource string) []string {
-	verbs := []string{"get", "list", "create", "update", "delete"}
-	var allowed []string
+// getRulesForNamespace uses SelfSubjectRulesReview to get all permissions
+// in a single API call per namespace.
+func (rc *RBACChecker) getRulesForNamespace(ctx context.Context, cs *kubernetes.Clientset, namespace string) (map[string][]string, error) {
+	review := &authorizationv1.SelfSubjectRulesReview{
+		Spec: authorizationv1.SelfSubjectRulesReviewSpec{
+			Namespace: namespace,
+		},
+	}
 
-	for _, verb := range verbs {
-		sar := &authorizationv1.SelfSubjectAccessReview{
-			Spec: authorizationv1.SelfSubjectAccessReviewSpec{
-				ResourceAttributes: &authorizationv1.ResourceAttributes{
-					Namespace: namespace,
-					Verb:      verb,
-					Resource:  resource,
-				},
-			},
-		}
+	result, err := cs.AuthorizationV1().SelfSubjectRulesReviews().Create(ctx, review, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("SelfSubjectRulesReview for namespace %q: %w", namespace, err)
+	}
 
-		result, err := cs.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, sar, metav1.CreateOptions{})
-		if err != nil {
-			rc.logger.Debug("RBAC check failed", "resource", resource, "verb", verb, "namespace", namespace, "error", err)
-			continue
-		}
-		if result.Status.Allowed {
-			allowed = append(allowed, verb)
+	perms := make(map[string][]string)
+
+	for _, rule := range result.Status.ResourceRules {
+		for _, resource := range rule.Resources {
+			if !trackedResources[resource] {
+				continue
+			}
+			for _, verb := range rule.Verbs {
+				perms[resource] = appendUnique(perms[resource], verb)
+			}
 		}
 	}
 
-	return allowed
+	return perms, nil
+}
+
+func isSystemNamespace(ns string) bool {
+	for _, prefix := range systemNamespacePrefixes {
+		if strings.HasPrefix(ns, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func appendUnique(slice []string, val string) []string {
+	for _, v := range slice {
+		if v == val {
+			return slice
+		}
+	}
+	return append(slice, val)
 }
