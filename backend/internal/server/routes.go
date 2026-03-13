@@ -50,6 +50,11 @@ func (s *Server) registerRoutes() {
 			if s.YAMLHandler != nil {
 				s.registerYAMLRoutes(ar)
 			}
+
+			// Wizard routes — only registered if wizard handler is available
+			if s.WizardHandler != nil {
+				s.registerWizardRoutes(ar)
+			}
 		})
 	})
 }
@@ -83,6 +88,21 @@ func (s *Server) registerYAMLRoutes(ar chi.Router) {
 		yr.Post("/apply", h.HandleApply)
 		yr.Post("/diff", h.HandleDiff)
 		yr.Get("/export/{kind}/{namespace}/{name}", h.HandleExport)
+	})
+}
+
+func (s *Server) registerWizardRoutes(ar chi.Router) {
+	h := s.WizardHandler
+	ar.Route("/wizards", func(wr chi.Router) {
+		// Share YAML rate limiter (30 req/min) for wizard preview endpoints
+		yamlRL := s.YAMLRateLimiter
+		if yamlRL == nil {
+			yamlRL = s.RateLimiter
+		}
+		wr.Use(middleware.RateLimit(yamlRL))
+
+		wr.Post("/deployment/preview", h.HandleDeploymentPreview)
+		wr.Post("/service/preview", h.HandleServicePreview)
 	})
 }
 

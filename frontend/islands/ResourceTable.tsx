@@ -28,6 +28,8 @@ interface ResourceTableProps {
   clusterScoped?: boolean;
   /** Whether to subscribe to WebSocket events (false for secrets) */
   enableWS?: boolean;
+  /** URL for "Create" button (if provided, shows a Create button in header) */
+  createHref?: string;
 }
 
 const PAGE_SIZE = 100;
@@ -37,6 +39,7 @@ export default function ResourceTable({
   title,
   clusterScoped = false,
   enableWS = true,
+  createHref,
 }: ResourceTableProps) {
   const items = useSignal<K8sResource[]>([]);
   const loading = useSignal(true);
@@ -256,6 +259,27 @@ export default function ResourceTable({
           <span class="text-sm text-slate-500 dark:text-slate-400">
             {itemCountText.value}
           </span>
+          {createHref && (
+            <a
+              href={createHref}
+              class="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand/90 transition-colors"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              Create
+            </a>
+          )}
           <button
             type="button"
             onClick={() => fetchResources()}
