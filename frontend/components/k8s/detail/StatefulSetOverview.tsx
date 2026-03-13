@@ -1,93 +1,42 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { StatefulSet } from "@/lib/k8s-types.ts";
+import type { K8sResource, StatefulSet } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { KeyValueTable } from "./KeyValueTable.tsx";
 
 export function StatefulSetOverview({ resource }: { resource: K8sResource }) {
   const s = resource as StatefulSet;
   const spec = s.spec;
   const status = s.status;
-
-  // Extract update strategy from spec
-  const updateStrategy = (spec as Record<string, unknown>).updateStrategy as
-    | { type?: string; rollingUpdate?: { partition?: number } }
-    | undefined;
+  const updateStrategy = spec.updateStrategy;
 
   return (
     <div class="space-y-4">
       {/* Replicas */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Replicas
-        </h4>
+        <SectionHeader>Replicas</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Desired
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.replicas ?? 1}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Ready
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.readyReplicas ?? 0}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Current
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.currentReplicas ?? 0}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Updated
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.updatedReplicas ?? 0}
-            </div>
-          </div>
+          <Field label="Desired" value={String(spec.replicas ?? 1)} />
+          <Field label="Ready" value={String(status?.readyReplicas ?? 0)} />
+          <Field label="Current" value={String(status?.currentReplicas ?? 0)} />
+          <Field label="Updated" value={String(status?.updatedReplicas ?? 0)} />
         </div>
       </div>
 
       {/* Configuration */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Configuration
-        </h4>
+        <SectionHeader>Configuration</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Service Name
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.serviceName}
-            </div>
-          </div>
+          <Field label="Service Name" value={spec.serviceName} />
           {updateStrategy && (
             <>
-              <div>
-                <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Update Strategy
-                </div>
-                <div class="text-sm text-slate-900 dark:text-slate-100">
-                  {updateStrategy.type ?? "RollingUpdate"}
-                </div>
-              </div>
+              <Field
+                label="Update Strategy"
+                value={updateStrategy.type ?? "RollingUpdate"}
+              />
               {updateStrategy.rollingUpdate?.partition != null && (
-                <div>
-                  <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Partition
-                  </div>
-                  <div class="text-sm text-slate-900 dark:text-slate-100">
-                    {updateStrategy.rollingUpdate.partition}
-                  </div>
-                </div>
+                <Field
+                  label="Partition"
+                  value={String(updateStrategy.rollingUpdate.partition)}
+                />
               )}
             </>
           )}

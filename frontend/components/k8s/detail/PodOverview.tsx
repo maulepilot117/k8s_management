@@ -1,6 +1,6 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { Pod } from "@/lib/k8s-types.ts";
+import type { K8sResource, Pod } from "@/lib/k8s-types.ts";
 import { statusColor } from "@/lib/status-colors.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { ConditionsTable } from "./ConditionsTable.tsx";
 
 function containerStateLabel(state: Record<string, unknown>): string {
@@ -35,49 +35,34 @@ export function PodOverview({ resource }: { resource: K8sResource }) {
     <div class="space-y-4">
       {/* Summary */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Summary
-        </h4>
+        <SectionHeader>Summary</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">
               Phase
-            </div>
-            <div class="mt-0.5">
+            </dt>
+            <dd class="mt-0.5">
               <span
                 class={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                  statusColor(status.phase)
+                  statusColor(status?.phase)
                 }`}
               >
-                {status.phase}
+                {status?.phase}
               </span>
-            </div>
+            </dd>
           </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Node
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.nodeName ?? "-"}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Restart Policy
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.restartPolicy ?? "Always"}
-            </div>
-          </div>
+          <Field label="Node" value={spec.nodeName ?? "-"} />
+          <Field
+            label="Restart Policy"
+            value={spec.restartPolicy ?? "Always"}
+          />
         </div>
       </div>
 
       {/* Container Statuses */}
-      {(status.containerStatuses ?? spec.containers) && (
+      {(status?.containerStatuses ?? spec.containers) && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Containers
-          </h4>
+          <SectionHeader>Containers</SectionHeader>
           <div class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table class="w-full text-sm">
               <thead>
@@ -101,7 +86,7 @@ export function PodOverview({ resource }: { resource: K8sResource }) {
               </thead>
               <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
                 {spec.containers.map((c) => {
-                  const cs = status.containerStatuses?.find((s) =>
+                  const cs = status?.containerStatuses?.find((s) =>
                     s.name === c.name
                   );
                   const stateLabel = cs ? containerStateLabel(cs.state) : "-";
@@ -141,7 +126,7 @@ export function PodOverview({ resource }: { resource: K8sResource }) {
       )}
 
       {/* Conditions */}
-      {status.conditions && <ConditionsTable conditions={status.conditions} />}
+      {status?.conditions && <ConditionsTable conditions={status.conditions} />}
     </div>
   );
 }

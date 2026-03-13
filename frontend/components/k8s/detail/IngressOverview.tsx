@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { Ingress } from "@/lib/k8s-types.ts";
+import type { Ingress, K8sResource } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 
 function formatBackend(backend: unknown): string {
   const b = backend as Record<string, unknown>;
@@ -37,19 +37,15 @@ export function IngressOverview({ resource }: { resource: K8sResource }) {
       {/* Load Balancer */}
       {lbIngress && lbIngress.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Load Balancer
-          </h4>
+          <SectionHeader>Load Balancer</SectionHeader>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {lbIngress.map((lb, i) => (
-              <div key={i}>
-                <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {lb.ip ? "IP" : "Hostname"}
-                </div>
-                <div class="text-sm font-mono text-slate-900 dark:text-slate-100">
-                  {lb.ip ?? lb.hostname ?? "-"}
-                </div>
-              </div>
+              <Field
+                key={i}
+                label={lb.ip ? "IP" : "Hostname"}
+                value={lb.ip ?? lb.hostname ?? "-"}
+                mono
+              />
             ))}
           </div>
         </div>
@@ -58,9 +54,7 @@ export function IngressOverview({ resource }: { resource: K8sResource }) {
       {/* Rules */}
       {rows.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Rules
-          </h4>
+          <SectionHeader>Rules</SectionHeader>
           <div class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table class="w-full text-sm">
               <thead>
@@ -99,9 +93,7 @@ export function IngressOverview({ resource }: { resource: K8sResource }) {
       {/* TLS */}
       {spec.tls && spec.tls.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            TLS
-          </h4>
+          <SectionHeader>TLS</SectionHeader>
           <div class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table class="w-full text-sm">
               <thead>

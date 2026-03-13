@@ -1,4 +1,5 @@
 import type { K8sResource } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { age } from "@/lib/format.ts";
 import { KeyValueTable } from "./KeyValueTable.tsx";
 
@@ -32,9 +33,7 @@ export function MetadataSection({ resource }: MetadataSectionProps) {
 
       {meta.ownerReferences && meta.ownerReferences.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Owner References
-          </h4>
+          <SectionHeader>Owner References</SectionHeader>
           <div class="space-y-1">
             {meta.ownerReferences.map((ref) => (
               <div
@@ -53,9 +52,7 @@ export function MetadataSection({ resource }: MetadataSectionProps) {
 
       {meta.finalizers && meta.finalizers.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Finalizers
-          </h4>
+          <SectionHeader>Finalizers</SectionHeader>
           <div class="space-y-1">
             {meta.finalizers.map((f) => (
               <div
@@ -75,31 +72,6 @@ export function MetadataSection({ resource }: MetadataSectionProps) {
       {meta.annotations && Object.keys(meta.annotations).length > 0 && (
         <KeyValueTable title="Annotations" data={meta.annotations} />
       )}
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div>
-      <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">
-        {label}
-      </dt>
-      <dd
-        class={`mt-0.5 text-sm text-slate-900 dark:text-slate-100 break-all ${
-          mono ? "font-mono text-xs" : ""
-        }`}
-      >
-        {value}
-      </dd>
     </div>
   );
 }

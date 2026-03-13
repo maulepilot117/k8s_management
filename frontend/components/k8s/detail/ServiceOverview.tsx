@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { Service } from "@/lib/k8s-types.ts";
+import type { K8sResource, Service } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { KeyValueTable } from "./KeyValueTable.tsx";
 
 export function ServiceOverview({ resource }: { resource: K8sResource }) {
@@ -10,35 +10,17 @@ export function ServiceOverview({ resource }: { resource: K8sResource }) {
     <div class="space-y-4">
       {/* Summary */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Summary
-        </h4>
+        <SectionHeader>Summary</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Type
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.type}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Cluster IP
-            </div>
-            <div class="text-sm font-mono text-slate-900 dark:text-slate-100">
-              {spec.clusterIP ?? "None"}
-            </div>
-          </div>
+          <Field label="Type" value={spec.type} />
+          <Field label="Cluster IP" value={spec.clusterIP ?? "None"} mono />
         </div>
       </div>
 
       {/* Ports */}
       {spec.ports && spec.ports.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Ports
-          </h4>
+          <SectionHeader>Ports</SectionHeader>
           <div class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table class="w-full text-sm">
               <thead>

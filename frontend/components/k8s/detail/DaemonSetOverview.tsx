@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { DaemonSet } from "@/lib/k8s-types.ts";
+import type { DaemonSet, K8sResource } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { KeyValueTable } from "./KeyValueTable.tsx";
 
 export function DaemonSetOverview({ resource }: { resource: K8sResource }) {
@@ -11,42 +11,21 @@ export function DaemonSetOverview({ resource }: { resource: K8sResource }) {
     <div class="space-y-4">
       {/* Counts */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Status
-        </h4>
+        <SectionHeader>Status</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Desired
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.desiredNumberScheduled}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Current
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.currentNumberScheduled}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Ready
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.numberReady}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Available
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.numberAvailable ?? 0}
-            </div>
-          </div>
+          <Field
+            label="Desired"
+            value={String(status?.desiredNumberScheduled ?? 0)}
+          />
+          <Field
+            label="Current"
+            value={String(status?.currentNumberScheduled ?? 0)}
+          />
+          <Field label="Ready" value={String(status?.numberReady ?? 0)} />
+          <Field
+            label="Available"
+            value={String(status?.numberAvailable ?? 0)}
+          />
         </div>
       </div>
 

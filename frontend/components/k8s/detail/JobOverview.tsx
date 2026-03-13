@@ -1,6 +1,6 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { Job } from "@/lib/k8s-types.ts";
+import type { Job, K8sResource } from "@/lib/k8s-types.ts";
 import { age } from "@/lib/format.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { ConditionsTable } from "./ConditionsTable.tsx";
 
 export function JobOverview({ resource }: { resource: K8sResource }) {
@@ -12,85 +12,31 @@ export function JobOverview({ resource }: { resource: K8sResource }) {
     <div class="space-y-4">
       {/* Configuration */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Configuration
-        </h4>
+        <SectionHeader>Configuration</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Completions
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.completions ?? 1}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Parallelism
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.parallelism ?? 1}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Backoff Limit
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.backoffLimit ?? 6}
-            </div>
-          </div>
+          <Field label="Completions" value={String(spec.completions ?? 1)} />
+          <Field label="Parallelism" value={String(spec.parallelism ?? 1)} />
+          <Field label="Backoff Limit" value={String(spec.backoffLimit ?? 6)} />
         </div>
       </div>
 
       {/* Status */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Status
-        </h4>
+        <SectionHeader>Status</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Active
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.active ?? 0}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Succeeded
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.succeeded ?? 0}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Failed
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.failed ?? 0}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Start Time
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.startTime ? age(status.startTime) + " ago" : "-"}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Completion Time
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.completionTime
-                ? age(status.completionTime) + " ago"
-                : "-"}
-            </div>
-          </div>
+          <Field label="Active" value={String(status.active ?? 0)} />
+          <Field label="Succeeded" value={String(status.succeeded ?? 0)} />
+          <Field label="Failed" value={String(status.failed ?? 0)} />
+          <Field
+            label="Start Time"
+            value={status.startTime ? age(status.startTime) + " ago" : "-"}
+          />
+          <Field
+            label="Completion Time"
+            value={status.completionTime
+              ? age(status.completionTime) + " ago"
+              : "-"}
+          />
         </div>
       </div>
 

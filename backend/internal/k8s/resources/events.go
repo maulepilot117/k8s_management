@@ -39,6 +39,27 @@ func (h *Handler) HandleListEvents(w http.ResponseWriter, r *http.Request) {
 		mapK8sError(w, err, "list", "Event", params.Namespace, "")
 		return
 	}
+
+	// Optional server-side filtering by involvedObject fields.
+	if objKind := r.URL.Query().Get("involvedObjectKind"); objKind != "" {
+		filtered := all[:0]
+		for _, e := range all {
+			if e.InvolvedObject.Kind == objKind {
+				filtered = append(filtered, e)
+			}
+		}
+		all = filtered
+	}
+	if objName := r.URL.Query().Get("involvedObjectName"); objName != "" {
+		filtered := all[:0]
+		for _, e := range all {
+			if e.InvolvedObject.Name == objName {
+				filtered = append(filtered, e)
+			}
+		}
+		all = filtered
+	}
+
 	items, cont := paginate(all, params.Limit, params.Continue)
 	writeList(w, items, len(all), cont)
 }

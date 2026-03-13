@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { Node } from "@/lib/k8s-types.ts";
+import type { K8sResource, Node } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { ConditionsTable } from "./ConditionsTable.tsx";
 
 export function NodeOverview({ resource }: { resource: K8sResource }) {
@@ -7,8 +7,8 @@ export function NodeOverview({ resource }: { resource: K8sResource }) {
   const spec = n.spec;
   const status = n.status;
 
-  const capacity = status.capacity ?? {};
-  const allocatable = status.allocatable ?? {};
+  const capacity = status?.capacity ?? {};
+  const allocatable = status?.allocatable ?? {};
   const capacityKeys = [
     ...new Set([...Object.keys(capacity), ...Object.keys(allocatable)]),
   ].sort();
@@ -16,64 +16,34 @@ export function NodeOverview({ resource }: { resource: K8sResource }) {
   return (
     <div class="space-y-4">
       {/* System Info */}
-      {status.nodeInfo && (
+      {status?.nodeInfo && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            System Info
-          </h4>
+          <SectionHeader>System Info</SectionHeader>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Kubelet Version
-              </div>
-              <div class="text-sm text-slate-900 dark:text-slate-100">
-                {status.nodeInfo.kubeletVersion}
-              </div>
-            </div>
-            <div>
-              <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                OS Image
-              </div>
-              <div class="text-sm text-slate-900 dark:text-slate-100">
-                {status.nodeInfo.osImage}
-              </div>
-            </div>
-            <div>
-              <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Architecture
-              </div>
-              <div class="text-sm text-slate-900 dark:text-slate-100">
-                {status.nodeInfo.architecture}
-              </div>
-            </div>
-            <div>
-              <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Container Runtime
-              </div>
-              <div class="text-sm text-slate-900 dark:text-slate-100">
-                {status.nodeInfo.containerRuntimeVersion}
-              </div>
-            </div>
+            <Field
+              label="Kubelet Version"
+              value={status.nodeInfo.kubeletVersion ?? "-"}
+            />
+            <Field label="OS Image" value={status.nodeInfo.osImage ?? "-"} />
+            <Field
+              label="Architecture"
+              value={status.nodeInfo.architecture ?? "-"}
+            />
+            <Field
+              label="Container Runtime"
+              value={status.nodeInfo.containerRuntimeVersion ?? "-"}
+            />
           </div>
         </div>
       )}
 
       {/* Addresses */}
-      {status.addresses && status.addresses.length > 0 && (
+      {status?.addresses && status.addresses.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Addresses
-          </h4>
+          <SectionHeader>Addresses</SectionHeader>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {status.addresses.map((a) => (
-              <div key={a.type}>
-                <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {a.type}
-                </div>
-                <div class="text-sm font-mono text-slate-900 dark:text-slate-100">
-                  {a.address}
-                </div>
-              </div>
+              <Field key={a.type} label={a.type} value={a.address} mono />
             ))}
           </div>
         </div>
@@ -82,9 +52,7 @@ export function NodeOverview({ resource }: { resource: K8sResource }) {
       {/* Capacity vs Allocatable */}
       {capacityKeys.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Capacity vs Allocatable
-          </h4>
+          <SectionHeader>Capacity vs Allocatable</SectionHeader>
           <div class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table class="w-full text-sm">
               <thead>
@@ -121,11 +89,9 @@ export function NodeOverview({ resource }: { resource: K8sResource }) {
       )}
 
       {/* Taints */}
-      {spec.taints && spec.taints.length > 0 && (
+      {spec?.taints && spec.taints.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Taints
-          </h4>
+          <SectionHeader>Taints</SectionHeader>
           <div class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table class="w-full text-sm">
               <thead>
@@ -162,7 +128,7 @@ export function NodeOverview({ resource }: { resource: K8sResource }) {
       )}
 
       {/* Unschedulable */}
-      {spec.unschedulable && (
+      {spec?.unschedulable && (
         <div>
           <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/20">
             Cordoned (Unschedulable)
@@ -171,7 +137,7 @@ export function NodeOverview({ resource }: { resource: K8sResource }) {
       )}
 
       {/* Conditions */}
-      {status.conditions && <ConditionsTable conditions={status.conditions} />}
+      {status?.conditions && <ConditionsTable conditions={status.conditions} />}
     </div>
   );
 }

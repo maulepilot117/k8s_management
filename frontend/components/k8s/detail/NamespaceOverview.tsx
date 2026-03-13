@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { Namespace } from "@/lib/k8s-types.ts";
+import type { K8sResource, Namespace } from "@/lib/k8s-types.ts";
+import { SectionHeader } from "@/components/ui/Field.tsx";
 import { statusColor } from "@/lib/status-colors.ts";
 
 export function NamespaceOverview({ resource }: { resource: K8sResource }) {
@@ -9,9 +9,7 @@ export function NamespaceOverview({ resource }: { resource: K8sResource }) {
   return (
     <div class="space-y-4">
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Summary
-        </h4>
+        <SectionHeader>Summary</SectionHeader>
         <div>
           <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
             Phase

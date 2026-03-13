@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { useCallback, useRef, useState } from "preact/hooks";
+import { useCallback } from "preact/hooks";
 
 export interface TabDef {
   id: string;
@@ -15,28 +15,9 @@ interface TabsProps {
 
 /**
  * Accessible tab component with ARIA roles and keyboard navigation.
- * Panels are lazily mounted on first activation and kept mounted after.
+ * Only the active tab's content is rendered.
  */
 export function Tabs({ tabs, activeTab, onTabChange }: TabsProps) {
-  // Track which tabs have been mounted (for lazy rendering)
-  const [mounted, setMounted] = useState<Set<string>>(
-    () => new Set([activeTab]),
-  );
-  const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-
-  const handleTabChange = useCallback(
-    (id: string) => {
-      onTabChange(id);
-      setMounted((prev) => {
-        if (prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-    },
-    [onTabChange],
-  );
-
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       const currentIndex = tabs.findIndex((t) => t.id === activeTab);
@@ -58,12 +39,14 @@ export function Tabs({ tabs, activeTab, onTabChange }: TabsProps) {
 
       if (nextIndex !== null) {
         const nextTab = tabs[nextIndex];
-        handleTabChange(nextTab.id);
-        tabRefs.current.get(nextTab.id)?.focus();
+        onTabChange(nextTab.id);
+        document.getElementById(`tab-${nextTab.id}`)?.focus();
       }
     },
-    [tabs, activeTab, handleTabChange],
+    [tabs, activeTab, onTabChange],
   );
+
+  const activeTabDef = tabs.find((t) => t.id === activeTab);
 
   return (
     <div>
@@ -79,16 +62,13 @@ export function Tabs({ tabs, activeTab, onTabChange }: TabsProps) {
           return (
             <button
               key={tab.id}
-              ref={(el) => {
-                if (el) tabRefs.current.set(tab.id, el);
-              }}
               role="tab"
               id={`tab-${tab.id}`}
               aria-selected={isActive}
               aria-controls={`panel-${tab.id}`}
               tabIndex={isActive ? 0 : -1}
               type="button"
-              onClick={() => handleTabChange(tab.id)}
+              onClick={() => onTabChange(tab.id)}
               class={`px-4 py-2.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 ${
                 isActive
                   ? "border-b-2 border-brand text-brand"
@@ -101,26 +81,18 @@ export function Tabs({ tabs, activeTab, onTabChange }: TabsProps) {
         })}
       </div>
 
-      {/* Tab panels */}
-      {tabs.map((tab) => {
-        const isActive = tab.id === activeTab;
-        const isMounted = mounted.has(tab.id);
-        if (!isMounted) return null;
-
-        return (
-          <div
-            key={tab.id}
-            role="tabpanel"
-            id={`panel-${tab.id}`}
-            aria-labelledby={`tab-${tab.id}`}
-            hidden={!isActive}
-            tabIndex={0}
-            class="focus:outline-none"
-          >
-            {tab.content()}
-          </div>
-        );
-      })}
+      {/* Active tab panel */}
+      {activeTabDef && (
+        <div
+          role="tabpanel"
+          id={`panel-${activeTabDef.id}`}
+          aria-labelledby={`tab-${activeTabDef.id}`}
+          tabIndex={0}
+          class="focus:outline-none"
+        >
+          {activeTabDef.content()}
+        </div>
+      )}
     </div>
   );
 }

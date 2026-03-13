@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { Secret } from "@/lib/k8s-types.ts";
+import type { K8sResource, Secret } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 
 export function SecretOverview({ resource }: { resource: K8sResource }) {
   const s = resource as Secret;
@@ -11,35 +11,17 @@ export function SecretOverview({ resource }: { resource: K8sResource }) {
     <div class="space-y-4">
       {/* Type */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Summary
-        </h4>
+        <SectionHeader>Summary</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Type
-            </div>
-            <div class="text-sm font-mono text-slate-900 dark:text-slate-100">
-              {s.type ?? "Opaque"}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Keys
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {entries.length}
-            </div>
-          </div>
+          <Field label="Type" value={s.type ?? "Opaque"} mono />
+          <Field label="Keys" value={String(entries.length)} />
         </div>
       </div>
 
       {/* Data Keys (masked) */}
       {entries.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Data
-          </h4>
+          <SectionHeader>Data</SectionHeader>
           <div class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table class="w-full text-sm">
               <thead>

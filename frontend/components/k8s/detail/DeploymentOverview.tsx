@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { Deployment } from "@/lib/k8s-types.ts";
+import type { Deployment, K8sResource } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { ConditionsTable } from "./ConditionsTable.tsx";
 import { KeyValueTable } from "./KeyValueTable.tsx";
 
@@ -7,97 +7,41 @@ export function DeploymentOverview({ resource }: { resource: K8sResource }) {
   const d = resource as Deployment;
   const spec = d.spec;
   const status = d.status;
-
-  // Extract strategy from spec
-  const strategy = (spec as Record<string, unknown>).strategy as
-    | {
-      type?: string;
-      rollingUpdate?: { maxUnavailable?: unknown; maxSurge?: unknown };
-    }
-    | undefined;
-
-  // Extract container images from pod template
-  const template = spec.template as
-    | { spec?: { containers?: Array<{ name: string; image: string }> } }
-    | undefined;
-  const containers = template?.spec?.containers ?? [];
+  const strategy = spec.strategy;
+  const containers = spec.template?.spec?.containers ?? [];
 
   return (
     <div class="space-y-4">
       {/* Replica Counts */}
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Replicas
-        </h4>
+        <SectionHeader>Replicas</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Desired
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.replicas ?? 1}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Ready
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.readyReplicas ?? 0}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Available
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.availableReplicas ?? 0}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Updated
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {status.updatedReplicas ?? 0}
-            </div>
-          </div>
+          <Field label="Desired" value={String(spec.replicas ?? 1)} />
+          <Field label="Ready" value={String(status?.readyReplicas ?? 0)} />
+          <Field
+            label="Available"
+            value={String(status?.availableReplicas ?? 0)}
+          />
+          <Field label="Updated" value={String(status?.updatedReplicas ?? 0)} />
         </div>
       </div>
 
       {/* Strategy */}
       {strategy && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Strategy
-          </h4>
+          <SectionHeader>Strategy</SectionHeader>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Type
-              </div>
-              <div class="text-sm text-slate-900 dark:text-slate-100">
-                {strategy.type ?? "RollingUpdate"}
-              </div>
-            </div>
+            <Field label="Type" value={strategy.type ?? "RollingUpdate"} />
             {strategy.rollingUpdate && (
               <>
-                <div>
-                  <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Max Unavailable
-                  </div>
-                  <div class="text-sm text-slate-900 dark:text-slate-100">
-                    {String(strategy.rollingUpdate.maxUnavailable ?? "25%")}
-                  </div>
-                </div>
-                <div>
-                  <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Max Surge
-                  </div>
-                  <div class="text-sm text-slate-900 dark:text-slate-100">
-                    {String(strategy.rollingUpdate.maxSurge ?? "25%")}
-                  </div>
-                </div>
+                <Field
+                  label="Max Unavailable"
+                  value={String(strategy.rollingUpdate.maxUnavailable ?? "25%")}
+                />
+                <Field
+                  label="Max Surge"
+                  value={String(strategy.rollingUpdate.maxSurge ?? "25%")}
+                />
               </>
             )}
           </div>
@@ -107,9 +51,7 @@ export function DeploymentOverview({ resource }: { resource: K8sResource }) {
       {/* Container Images */}
       {containers.length > 0 && (
         <div>
-          <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-            Containers
-          </h4>
+          <SectionHeader>Containers</SectionHeader>
           <div class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table class="w-full text-sm">
               <thead>
@@ -145,7 +87,7 @@ export function DeploymentOverview({ resource }: { resource: K8sResource }) {
       )}
 
       {/* Conditions */}
-      {status.conditions && <ConditionsTable conditions={status.conditions} />}
+      {status?.conditions && <ConditionsTable conditions={status.conditions} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { ConfigMap } from "@/lib/k8s-types.ts";
+import type { ConfigMap, K8sResource } from "@/lib/k8s-types.ts";
+import { SectionHeader } from "@/components/ui/Field.tsx";
 
 export function ConfigMapOverview({ resource }: { resource: K8sResource }) {
   const cm = resource as ConfigMap;
@@ -10,9 +10,9 @@ export function ConfigMapOverview({ resource }: { resource: K8sResource }) {
   return (
     <div class="space-y-4">
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Data ({entries.length} {entries.length === 1 ? "key" : "keys"})
-        </h4>
+        <SectionHeader>
+          {`Data (${entries.length} ${entries.length === 1 ? "key" : "keys"})`}
+        </SectionHeader>
         {entries.length === 0
           ? (
             <p class="text-sm text-slate-500 dark:text-slate-400">

@@ -12,6 +12,8 @@ import {
 import { selectedNamespace } from "@/lib/namespace.ts";
 import { Tabs } from "@/components/ui/Tabs.tsx";
 import { CodeBlock } from "@/components/ui/CodeBlock.tsx";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner.tsx";
+import { ErrorBanner } from "@/components/ui/ErrorBanner.tsx";
 import { ResourceIcon } from "@/components/k8s/ResourceIcon.tsx";
 import { age } from "@/lib/format.ts";
 import type { K8sEvent, K8sResource } from "@/lib/k8s-types.ts";
@@ -60,6 +62,16 @@ export default function ResourceDetail({
   // YAML options
   const showManagedFields = useSignal(false);
 
+  // Periodic tick to refresh age displays (every 30s)
+  const tick = useSignal(0);
+  useEffect(() => {
+    if (!IS_BROWSER) return;
+    const id = setInterval(() => {
+      tick.value = tick.value + 1;
+    }, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   // Read initial tab from URL hash
   useEffect(() => {
     if (!IS_BROWSER) return;
@@ -84,7 +96,6 @@ export default function ResourceDetail({
     const listPath = RESOURCE_DETAIL_PATHS[kind];
     if (!listPath) return;
 
-    // Store the current namespace at subscription time
     const initialNs = selectedNamespace.value;
     const unsubscribe = selectedNamespace.subscribe((newNs) => {
       if (newNs !== initialNs) {
@@ -105,6 +116,8 @@ export default function ResourceDetail({
       const res = await apiGet<K8sResource>(path);
       resource.value = res.data;
       updated.value = false;
+      // Allow events to be re-fetched after a resource refresh
+      eventsFetched.current = false;
     } catch (err) {
       if (err instanceof Error && err.message.includes("404")) {
         error.value = `${title} "${name}" not found`;
@@ -173,27 +186,23 @@ export default function ResourceDetail({
     };
   }, [kind, name, namespace]);
 
-  // Fetch events when Events tab is first activated
+  // Fetch events when Events tab is first activated — server-side filtered
   const fetchEvents = useCallback(async () => {
     if (eventsFetched.current) return;
     eventsFetched.current = true;
     eventsLoading.value = true;
     eventsError.value = null;
     try {
-      // For cluster-scoped resources, fetch events from all namespaces
-      const eventsPath = namespace
-        ? `/v1/resources/events/${namespace}`
-        : `/v1/resources/events`;
-      const res = await apiGet<K8sEvent[]>(eventsPath);
-      const allEvents = Array.isArray(res.data) ? res.data : [];
-
-      // Filter by involvedObject kind and name
       const apiKind = RESOURCE_API_KINDS[kind] ?? title;
-      events.value = allEvents.filter(
-        (e) =>
-          e.involvedObject?.kind === apiKind &&
-          e.involvedObject?.name === name,
-      );
+      const params = new URLSearchParams({
+        involvedObjectKind: apiKind,
+        involvedObjectName: name,
+      });
+      const eventsPath = namespace
+        ? `/v1/resources/events/${namespace}?${params}`
+        : `/v1/resources/events?${params}`;
+      const res = await apiGet<K8sEvent[]>(eventsPath);
+      events.value = Array.isArray(res.data) ? res.data : [];
     } catch (err) {
       eventsError.value = err instanceof Error
         ? err.message
@@ -233,6 +242,9 @@ export default function ResourceDetail({
 
   // Build back-to-list URL
   const listUrl = RESOURCE_DETAIL_PATHS[kind] ?? "/";
+
+  // Force age() to use tick for reactivity (read tick.value so signal is tracked)
+  const _tick = tick.value;
 
   const tabDefs = [
     {
@@ -374,7 +386,7 @@ export default function ResourceDetail({
             </h1>
             {resource.value && (
               <span class="text-sm text-slate-400 dark:text-slate-500">
-                {age(resource.value.metadata.creationTimestamp)}
+                {_tick >= 0 && age(resource.value.metadata.creationTimestamp)}
               </span>
             )}
           </div>
@@ -392,40 +404,6 @@ export default function ResourceDetail({
           onTabChange={handleTabChange}
         />
       </div>
-    </div>
-  );
-}
-
-function LoadingSpinner() {
-  return (
-    <div class="flex items-center justify-center p-12">
-      <svg
-        class="h-6 w-6 animate-spin text-slate-400"
-        viewBox="0 0 24 24"
-        fill="none"
-      >
-        <circle
-          class="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          stroke-width="4"
-        />
-        <path
-          class="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-        />
-      </svg>
-    </div>
-  );
-}
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-      {message}
     </div>
   );
 }

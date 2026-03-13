@@ -1,5 +1,5 @@
-import type { K8sResource } from "@/lib/k8s-types.ts";
-import type { PersistentVolumeClaim } from "@/lib/k8s-types.ts";
+import type { K8sResource, PersistentVolumeClaim } from "@/lib/k8s-types.ts";
+import { Field, SectionHeader } from "@/components/ui/Field.tsx";
 import { statusColor } from "@/lib/status-colors.ts";
 
 export function PVCOverview({ resource }: { resource: K8sResource }) {
@@ -8,17 +8,10 @@ export function PVCOverview({ resource }: { resource: K8sResource }) {
   const status = pvc.status;
   const phase = status?.phase ?? "Pending";
 
-  // Volume name from spec.volumeName
-  const volumeName = (spec as Record<string, unknown>).volumeName as
-    | string
-    | undefined;
-
   return (
     <div class="space-y-4">
       <div>
-        <h4 class="text-xs font-medium uppercase text-slate-500 dark:text-slate-400 mb-2">
-          Summary
-        </h4>
+        <SectionHeader>Summary</SectionHeader>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -34,46 +27,22 @@ export function PVCOverview({ resource }: { resource: K8sResource }) {
               </span>
             </div>
           </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Storage Class
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.storageClassName ?? "-"}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Access Modes
-            </div>
-            <div class="text-sm text-slate-900 dark:text-slate-100">
-              {spec.accessModes?.join(", ") ?? "-"}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Requested Capacity
-            </div>
-            <div class="text-sm font-mono text-slate-900 dark:text-slate-100">
-              {spec.resources?.requests?.storage ?? "-"}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Actual Capacity
-            </div>
-            <div class="text-sm font-mono text-slate-900 dark:text-slate-100">
-              {status?.capacity?.storage ?? "-"}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Volume Name
-            </div>
-            <div class="text-sm font-mono text-slate-900 dark:text-slate-100 break-all">
-              {volumeName ?? "-"}
-            </div>
-          </div>
+          <Field label="Storage Class" value={spec?.storageClassName ?? "-"} />
+          <Field
+            label="Access Modes"
+            value={spec?.accessModes?.join(", ") ?? "-"}
+          />
+          <Field
+            label="Requested Capacity"
+            value={spec?.resources?.requests?.storage ?? "-"}
+            mono
+          />
+          <Field
+            label="Actual Capacity"
+            value={status?.capacity?.storage ?? "-"}
+            mono
+          />
+          <Field label="Volume Name" value={spec?.volumeName ?? "-"} mono />
         </div>
       </div>
     </div>
