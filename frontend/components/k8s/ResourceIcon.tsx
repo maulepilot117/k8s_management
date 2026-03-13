@@ -158,6 +158,24 @@ const icons: Record<string, ReturnType<typeof SVGContent>> = {
       <path d="M10 8v6M15 4l2-2M3 4l2-2" />
     </>
   ),
+  monitoring: (
+    <>
+      <path d="M3 16l4-6 3 4 4-8 3 5" />
+      <path d="M3 17h14" />
+    </>
+  ),
+  dashboards: (
+    <>
+      <rect x="3" y="3" width="14" height="14" rx="2" />
+      <path d="M3 8h14M8 8v9" />
+    </>
+  ),
+  prometheus: (
+    <>
+      <circle cx="10" cy="10" r="7" />
+      <path d="M10 5v5l3 3" />
+    </>
+  ),
   yaml: (
     <>
       <path d="M4 3h12a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1z" />

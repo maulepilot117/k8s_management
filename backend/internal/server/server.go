@@ -13,6 +13,7 @@ import (
 	"github.com/kubecenter/kubecenter/internal/config"
 	"github.com/kubecenter/kubecenter/internal/k8s"
 	"github.com/kubecenter/kubecenter/internal/k8s/resources"
+	"github.com/kubecenter/kubecenter/internal/monitoring"
 	"github.com/kubecenter/kubecenter/internal/server/middleware" // used by Deps type
 	"github.com/kubecenter/kubecenter/internal/websocket"
 	"github.com/kubecenter/kubecenter/internal/wizard"
@@ -35,9 +36,10 @@ type Server struct {
 	YAMLRateLimiter *middleware.RateLimiter
 	ResourceHandler *resources.Handler
 	YAMLHandler     *yamlpkg.Handler
-	WizardHandler   *wizard.Handler
-	Hub             *websocket.Hub
-	ready           func() bool
+	WizardHandler     *wizard.Handler
+	MonitoringHandler *monitoring.Handler
+	Hub               *websocket.Hub
+	ready             func() bool
 }
 
 // Deps holds all dependencies needed to create a Server.
@@ -53,9 +55,10 @@ type Deps struct {
 	AuditLogger     audit.Logger
 	RateLimiter     *middleware.RateLimiter
 	YAMLRateLimiter *middleware.RateLimiter
-	Hub             *websocket.Hub
-	AccessChecker *resources.AccessChecker
-	ReadyFn       func() bool
+	Hub               *websocket.Hub
+	MonitoringHandler *monitoring.Handler
+	AccessChecker     *resources.AccessChecker
+	ReadyFn           func() bool
 }
 
 // New creates a configured HTTP server with middleware and routes.
@@ -102,6 +105,12 @@ func New(deps Deps) *Server {
 		s.WizardHandler = &wizard.Handler{
 			Logger: deps.Logger,
 		}
+	}
+
+	// Monitoring handler — wired separately since it doesn't depend on k8s
+	// informers (it uses its own discovery goroutine)
+	if deps.MonitoringHandler != nil {
+		s.MonitoringHandler = deps.MonitoringHandler
 	}
 
 	// Global middleware chain — order matters.

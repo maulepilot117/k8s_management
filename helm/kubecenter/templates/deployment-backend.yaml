@@ -50,6 +50,25 @@ spec:
               value: {{ .Values.backend.config.logFormat | quote }}
             - name: KUBECENTER_CLUSTERID
               value: {{ .Values.backend.config.clusterID | quote }}
+            {{- if .Values.monitoring.namespace }}
+            - name: KUBECENTER_MONITORING_NAMESPACE
+              value: {{ .Values.monitoring.namespace | quote }}
+            {{- end }}
+            {{- if .Values.monitoring.prometheus.url }}
+            - name: KUBECENTER_MONITORING_PROMETHEUSURL
+              value: {{ .Values.monitoring.prometheus.url | quote }}
+            {{- end }}
+            {{- if .Values.monitoring.grafana.url }}
+            - name: KUBECENTER_MONITORING_GRAFANAURL
+              value: {{ .Values.monitoring.grafana.url | quote }}
+            {{- end }}
+            {{- if .Values.monitoring.grafana.apiToken }}
+            - name: KUBECENTER_MONITORING_GRAFANATOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubecenter.fullname" . }}-monitoring
+                  key: grafana-api-token
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

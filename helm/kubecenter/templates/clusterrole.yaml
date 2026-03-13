@@ -38,6 +38,18 @@ rules:
       - ingresses
       - networkpolicies
     verbs: ["get", "list", "watch"]
+  # RBAC viewer (read-only)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - clusterroles
+      - rolebindings
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+  # Monitoring discovery — check for Prometheus Operator CRDs and resources
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors", "prometheuses"]
+    verbs: ["list", "get"]
   # SelfSubjectAccessReview for RBAC filtering
   - apiGroups: ["authorization.k8s.io"]
     resources: ["selfsubjectaccessreviews"]

@@ -20,6 +20,7 @@ import { getOverviewComponent } from "@/components/k8s/detail/index.tsx";
 import { MetadataSection } from "@/components/k8s/detail/MetadataSection.tsx";
 import { stringify } from "yaml";
 import YamlEditor from "@/islands/YamlEditor.tsx";
+import PerformancePanel from "@/islands/PerformancePanel.tsx";
 
 interface ResourceDetailProps {
   kind: string;
@@ -516,14 +517,7 @@ export default function ResourceDetail({
       id: "metrics",
       label: "Metrics",
       content: () => (
-        <div class="p-12 text-center text-sm text-slate-400 dark:text-slate-500">
-          <p class="text-lg font-medium text-slate-500 dark:text-slate-400">
-            Metrics
-          </p>
-          <p class="mt-1">
-            Coming in Step 9 — Prometheus & Grafana integration
-          </p>
-        </div>
+        <PerformancePanel kind={kind} name={name} namespace={namespace} />
       ),
     },
   ];

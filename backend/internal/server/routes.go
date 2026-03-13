@@ -55,6 +55,11 @@ func (s *Server) registerRoutes() {
 			if s.WizardHandler != nil {
 				s.registerWizardRoutes(ar)
 			}
+
+			// Monitoring routes — only registered if monitoring handler is available
+			if s.MonitoringHandler != nil {
+				s.registerMonitoringRoutes(ar)
+			}
 		})
 	})
 }
@@ -103,6 +108,28 @@ func (s *Server) registerWizardRoutes(ar chi.Router) {
 
 		wr.Post("/deployment/preview", h.HandleDeploymentPreview)
 		wr.Post("/service/preview", h.HandleServicePreview)
+	})
+}
+
+func (s *Server) registerMonitoringRoutes(ar chi.Router) {
+	h := s.MonitoringHandler
+	ar.Route("/monitoring", func(mr chi.Router) {
+		// Share YAML rate limiter (30 req/min) for monitoring endpoints
+		yamlRL := s.YAMLRateLimiter
+		if yamlRL == nil {
+			yamlRL = s.RateLimiter
+		}
+		mr.Use(middleware.RateLimit(yamlRL))
+
+		mr.Get("/status", h.HandleStatus)
+		mr.Post("/rediscover", h.HandleRediscover)
+		mr.Get("/query", h.HandleQuery)
+		mr.Get("/query_range", h.HandleQueryRange)
+		mr.Get("/dashboards", h.HandleDashboards)
+		mr.Get("/templates", h.HandleTemplates)
+		mr.Get("/templates/query", h.HandleTemplateQuery)
+		mr.Get("/resource-dashboard", h.HandleResourceDashboard)
+		mr.HandleFunc("/grafana/proxy/*", h.GrafanaProxy)
 	})
 }
 
