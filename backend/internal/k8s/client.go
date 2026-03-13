@@ -10,8 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -25,12 +30,20 @@ type cachedClient struct {
 	expiresAt time.Time
 }
 
+type cachedDynClient struct {
+	client    dynamic.Interface
+	expiresAt time.Time
+}
+
 // ClientFactory creates Kubernetes clientsets, with impersonation support
 // and a cache to avoid repeated TLS handshakes.
 type ClientFactory struct {
 	baseConfig    *rest.Config
 	baseClientset *kubernetes.Clientset
-	cache         sync.Map // map[string]cachedClient
+	cache         sync.Map // map[string]cachedClient — typed clientsets
+	dynCache      sync.Map // map[string]cachedDynClient — dynamic clients
+	mapper        meta.RESTMapper
+	mapperOnce    sync.Once
 	clusterID     string
 	logger        *slog.Logger
 	testOverride  *kubernetes.Clientset // if set, ClientForUser returns this directly
@@ -130,6 +143,57 @@ func (f *ClientFactory) ClientForUser(username string, groups []string) (*kubern
 	return cs, nil
 }
 
+// DynamicClientForUser returns an impersonating dynamic.Interface for the given
+// user. This is used for YAML apply operations where the resource type is not
+// known at compile time (arbitrary apiVersion/kind).
+// Results are cached for 5 minutes keyed by hash(username+groups).
+func (f *ClientFactory) DynamicClientForUser(username string, groups []string) (dynamic.Interface, error) {
+	key := cacheKey(username, groups)
+
+	if val, ok := f.dynCache.Load(key); ok {
+		cc := val.(cachedDynClient)
+		if time.Now().Before(cc.expiresAt) {
+			return cc.client, nil
+		}
+		f.dynCache.Delete(key)
+	}
+
+	cfg := rest.CopyConfig(f.baseConfig)
+	cfg.Impersonate = rest.ImpersonationConfig{
+		UserName: username,
+		Groups:   groups,
+	}
+
+	dc, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("creating impersonating dynamic client for %s: %w", username, err)
+	}
+
+	f.dynCache.Store(key, cachedDynClient{
+		client:    dc,
+		expiresAt: time.Now().Add(clientCacheTTL),
+	})
+
+	return dc, nil
+}
+
+// RESTMapper returns a cached discovery-based REST mapper for resolving
+// GVK (GroupVersionKind) to GVR (GroupVersionResource). The mapper uses
+// an in-memory discovery cache that automatically invalidates on miss.
+// The mapper instance is created once and reused across calls.
+func (f *ClientFactory) RESTMapper() meta.RESTMapper {
+	f.mapperOnce.Do(func() {
+		cachedClient := memory.NewMemCacheClient(f.baseClientset.Discovery())
+		f.mapper = restmapper.NewDeferredDiscoveryRESTMapper(cachedClient)
+	})
+	return f.mapper
+}
+
+// DiscoveryClient returns the base clientset's discovery interface.
+func (f *ClientFactory) DiscoveryClient() discovery.DiscoveryInterface {
+	return f.baseClientset.Discovery()
+}
+
 // StartCacheSweeper runs a background goroutine that evicts expired clients
 // from the impersonation cache. Stops when the context is cancelled.
 func (f *ClientFactory) StartCacheSweeper(ctx context.Context) {
@@ -146,6 +210,13 @@ func (f *ClientFactory) StartCacheSweeper(ctx context.Context) {
 					cc := val.(cachedClient)
 					if now.After(cc.expiresAt) {
 						f.cache.Delete(key)
+					}
+					return true
+				})
+				f.dynCache.Range(func(key, val any) bool {
+					cc := val.(cachedDynClient)
+					if now.After(cc.expiresAt) {
+						f.dynCache.Delete(key)
 					}
 					return true
 				})

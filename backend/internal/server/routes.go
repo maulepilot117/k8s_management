@@ -45,6 +45,11 @@ func (s *Server) registerRoutes() {
 			if s.ResourceHandler != nil {
 				s.registerResourceRoutes(ar)
 			}
+
+			// YAML routes — only registered if k8s dependencies are available
+			if s.YAMLHandler != nil {
+				s.registerYAMLRoutes(ar)
+			}
 		})
 	})
 }
@@ -59,6 +64,20 @@ func (s *Server) registerResourceRoutes(ar chi.Router) {
 	ar.Group(func(rr chi.Router) {
 		rr.Use(resources.ValidateURLParams)
 		s.registerResourceEndpoints(rr, h)
+	})
+}
+
+func (s *Server) registerYAMLRoutes(ar chi.Router) {
+	h := s.YAMLHandler
+	ar.Route("/yaml", func(yr chi.Router) {
+		// Rate limit YAML operations — these accept large bodies and
+		// trigger multiple k8s API calls per request.
+		yr.Use(middleware.RateLimit(s.RateLimiter))
+
+		yr.Post("/validate", h.HandleValidate)
+		yr.Post("/apply", h.HandleApply)
+		yr.Post("/diff", h.HandleDiff)
+		yr.Get("/export/{kind}/{namespace}/{name}", h.HandleExport)
 	})
 }
 
