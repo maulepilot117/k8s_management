@@ -70,9 +70,14 @@ func (s *Server) registerResourceRoutes(ar chi.Router) {
 func (s *Server) registerYAMLRoutes(ar chi.Router) {
 	h := s.YAMLHandler
 	ar.Route("/yaml", func(yr chi.Router) {
-		// Rate limit YAML operations — these accept large bodies and
-		// trigger multiple k8s API calls per request.
-		yr.Use(middleware.RateLimit(s.RateLimiter))
+		// Rate limit YAML operations with a dedicated, higher-limit bucket
+		// (30 req/min) so that validate → diff → apply workflows don't
+		// exhaust the stricter auth rate limit (5 req/min).
+		yamlRL := s.YAMLRateLimiter
+		if yamlRL == nil {
+			yamlRL = s.RateLimiter
+		}
+		yr.Use(middleware.RateLimit(yamlRL))
 
 		yr.Post("/validate", h.HandleValidate)
 		yr.Post("/apply", h.HandleApply)

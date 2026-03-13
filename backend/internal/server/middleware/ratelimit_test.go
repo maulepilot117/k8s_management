@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"testing"
+	"time"
 )
 
 func TestRateLimiter_AllowsWithinLimit(t *testing.T) {
@@ -72,5 +73,26 @@ func TestRateLimiter_RetryAfter_UnknownIP(t *testing.T) {
 	}
 	if retryAfter != 0 {
 		t.Errorf("expected 0 retry after for unknown IP, got %d", retryAfter)
+	}
+}
+
+func TestRateLimiterWithRate_CustomLimit(t *testing.T) {
+	rl := NewRateLimiterWithRate(30, time.Minute)
+
+	// All 30 requests should be allowed
+	for i := 0; i < 30; i++ {
+		allowed, _ := rl.Check("192.168.1.1")
+		if !allowed {
+			t.Errorf("request %d should be allowed with rate 30", i+1)
+		}
+	}
+
+	// 31st request should be blocked
+	allowed, retryAfter := rl.Check("192.168.1.1")
+	if allowed {
+		t.Error("31st request should be rate limited with rate 30")
+	}
+	if retryAfter <= 0 || retryAfter > 61 {
+		t.Errorf("expected retry after between 1 and 61 seconds, got %d", retryAfter)
 	}
 }
