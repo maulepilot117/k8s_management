@@ -16,8 +16,10 @@ import (
 	"github.com/kubecenter/kubecenter/internal/auth"
 	"github.com/kubecenter/kubecenter/internal/config"
 	"github.com/kubecenter/kubecenter/internal/k8s"
+	"github.com/kubecenter/kubecenter/internal/k8s/resources"
 	"github.com/kubecenter/kubecenter/internal/server"
 	"github.com/kubecenter/kubecenter/internal/server/middleware"
+	"github.com/kubecenter/kubecenter/internal/websocket"
 	"github.com/kubecenter/kubecenter/pkg/version"
 )
 
@@ -63,9 +65,20 @@ func main() {
 	// Start cache sweeper for impersonating clients
 	k8sClient.StartCacheSweeper(ctx)
 
-	// Start informers
+	// Create informer manager and WebSocket hub
 	baseCS := k8sClient.BaseClientset()
 	informerMgr := k8s.NewInformerManager(baseCS, logger)
+	accessChecker := resources.NewAccessChecker(k8sClient, logger)
+	accessChecker.StartCacheSweeper(ctx)
+	hub := websocket.NewHub(logger, accessChecker)
+
+	// Register informer event handlers BEFORE starting informers
+	informerMgr.RegisterEventHandlers(hub.HandleEvent)
+
+	// Start WebSocket hub goroutine
+	go hub.Run(ctx)
+
+	// Start informers
 	informerMgr.Start(ctx)
 
 	if err := informerMgr.WaitForSync(ctx); err != nil {
@@ -111,6 +124,7 @@ func main() {
 		RBACChecker:  rbacChecker,
 		AuditLogger:  auditLogger,
 		RateLimiter:  rateLimiter,
+		Hub:          hub,
 		ReadyFn:      ready.Load,
 	})
 	httpServer := srv.HTTPServer()

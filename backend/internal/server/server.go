@@ -14,6 +14,7 @@ import (
 	"github.com/kubecenter/kubecenter/internal/k8s"
 	"github.com/kubecenter/kubecenter/internal/k8s/resources"
 	"github.com/kubecenter/kubecenter/internal/server/middleware" // used by Deps type
+	"github.com/kubecenter/kubecenter/internal/websocket"
 )
 
 // Server holds all dependencies needed by HTTP handlers.
@@ -30,6 +31,7 @@ type Server struct {
 	AuditLogger     audit.Logger
 	RateLimiter     *middleware.RateLimiter
 	ResourceHandler *resources.Handler
+	Hub             *websocket.Hub
 	ready           func() bool
 }
 
@@ -45,6 +47,7 @@ type Deps struct {
 	RBACChecker  *auth.RBACChecker
 	AuditLogger  audit.Logger
 	RateLimiter  *middleware.RateLimiter
+	Hub          *websocket.Hub
 	ReadyFn      func() bool
 }
 
@@ -62,6 +65,7 @@ func New(deps Deps) *Server {
 		RBACChecker:  deps.RBACChecker,
 		AuditLogger:  deps.AuditLogger,
 		RateLimiter:  deps.RateLimiter,
+		Hub:          deps.Hub,
 		ready:        deps.ReadyFn,
 	}
 
@@ -86,7 +90,8 @@ func New(deps Deps) *Server {
 	s.Router.Use(slogMiddleware(deps.Logger))
 	s.Router.Use(chimw.Recoverer)
 	s.Router.Use(chimw.CleanPath)
-	s.Router.Use(chimw.Timeout(deps.Config.Server.RequestTimeout))
+	// Note: Timeout is applied per-route-group (not globally) so that
+	// long-lived WebSocket connections are not terminated.
 	s.Router.Use(middleware.CORS(deps.Config))
 
 	s.registerRoutes()

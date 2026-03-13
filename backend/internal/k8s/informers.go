@@ -6,14 +6,15 @@ import (
 	"log/slog"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	appsv1listers "k8s.io/client-go/listers/apps/v1"
 	batchv1listers "k8s.io/client-go/listers/batch/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	networkingv1listers "k8s.io/client-go/listers/networking/v1"
 	rbacv1listers "k8s.io/client-go/listers/rbac/v1"
-
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 )
 
 const defaultResyncPeriod = 5 * time.Minute
@@ -178,4 +179,74 @@ func (m *InformerManager) RoleBindings() rbacv1listers.RoleBindingLister {
 
 func (m *InformerManager) ClusterRoleBindings() rbacv1listers.ClusterRoleBindingLister {
 	return m.factory.Rbac().V1().ClusterRoleBindings().Lister()
+}
+
+// EventCallback is called when an informer observes a resource change.
+type EventCallback func(eventType, kind, namespace, name string, obj any)
+
+// RegisterEventHandlers wires up informer event handlers that invoke the
+// callback on every add/update/delete. Call BEFORE Start() to avoid missing events.
+// Secrets are excluded (not in informer cache).
+func (m *InformerManager) RegisterEventHandlers(cb EventCallback) {
+	type informerSpec struct {
+		kind     string
+		informer interface{ AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) }
+	}
+
+	specs := []informerSpec{
+		{"pods", m.factory.Core().V1().Pods().Informer()},
+		{"services", m.factory.Core().V1().Services().Informer()},
+		{"configmaps", m.factory.Core().V1().ConfigMaps().Informer()},
+		{"namespaces", m.factory.Core().V1().Namespaces().Informer()},
+		{"nodes", m.factory.Core().V1().Nodes().Informer()},
+		{"persistentvolumeclaims", m.factory.Core().V1().PersistentVolumeClaims().Informer()},
+		{"events", m.factory.Core().V1().Events().Informer()},
+		{"deployments", m.factory.Apps().V1().Deployments().Informer()},
+		{"statefulsets", m.factory.Apps().V1().StatefulSets().Informer()},
+		{"daemonsets", m.factory.Apps().V1().DaemonSets().Informer()},
+		{"jobs", m.factory.Batch().V1().Jobs().Informer()},
+		{"cronjobs", m.factory.Batch().V1().CronJobs().Informer()},
+		{"ingresses", m.factory.Networking().V1().Ingresses().Informer()},
+		{"networkpolicies", m.factory.Networking().V1().NetworkPolicies().Informer()},
+		{"roles", m.factory.Rbac().V1().Roles().Informer()},
+		{"clusterroles", m.factory.Rbac().V1().ClusterRoles().Informer()},
+		{"rolebindings", m.factory.Rbac().V1().RoleBindings().Informer()},
+		{"clusterrolebindings", m.factory.Rbac().V1().ClusterRoleBindings().Informer()},
+	}
+
+	for _, spec := range specs {
+		kind := spec.kind
+		handler := cache.ResourceEventHandlerDetailedFuncs{
+			AddFunc: func(obj interface{}, isInInitialList bool) {
+				if isInInitialList {
+					return // suppress initial sync flood
+				}
+				m.emitEvent(cb, "ADDED", kind, obj)
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				m.emitEvent(cb, "MODIFIED", kind, newObj)
+			},
+			DeleteFunc: func(obj interface{}) {
+				if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+					obj = d.Obj
+				}
+				m.emitEvent(cb, "DELETED", kind, obj)
+			},
+		}
+		if _, err := spec.informer.AddEventHandler(handler); err != nil {
+			m.logger.Error("failed to add event handler", "kind", kind, "error", err)
+		}
+	}
+
+	m.logger.Info("informer event handlers registered", "kinds", len(specs))
+}
+
+// emitEvent extracts metadata from a k8s object and invokes the callback.
+func (m *InformerManager) emitEvent(cb EventCallback, eventType, kind string, obj interface{}) {
+	meta, ok := obj.(metav1.Object)
+	if !ok {
+		m.logger.Warn("event object does not implement metav1.Object", "kind", kind)
+		return
+	}
+	cb(eventType, kind, meta.GetNamespace(), meta.GetName(), obj)
 }

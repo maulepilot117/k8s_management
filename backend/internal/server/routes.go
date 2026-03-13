@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/kubecenter/kubecenter/internal/k8s/resources"
 	"github.com/kubecenter/kubecenter/internal/server/middleware"
 )
@@ -11,7 +12,16 @@ func (s *Server) registerRoutes() {
 	s.Router.Get("/healthz", s.handleHealthz)
 	s.Router.Get("/readyz", s.handleReadyz)
 
+	// WebSocket route — no timeout middleware (long-lived connections).
+	// Auth is handled in-band via the first message, not via middleware.
+	if s.Hub != nil {
+		s.Router.Get("/api/v1/ws/resources", s.handleWSResources)
+	}
+
 	s.Router.Route("/api/v1", func(r chi.Router) {
+		// Apply timeout to REST routes (not globally, to avoid killing WebSocket connections)
+		r.Use(chimw.Timeout(s.Config.Server.RequestTimeout))
+
 		// Public auth routes — rate limited where needed, no auth required
 		r.Route("/auth", func(ar chi.Router) {
 			ar.With(middleware.RateLimit(s.RateLimiter)).Post("/login", s.handleLogin)
@@ -161,6 +171,11 @@ func (s *Server) registerResourceEndpoints(ar chi.Router, h *resources.Handler) 
 	ar.Post("/resources/networkpolicies/{namespace}", h.HandleCreateNetworkPolicy)
 	ar.Put("/resources/networkpolicies/{namespace}/{name}", h.HandleUpdateNetworkPolicy)
 	ar.Delete("/resources/networkpolicies/{namespace}/{name}", h.HandleDeleteNetworkPolicy)
+
+	// Events (read-only)
+	ar.Get("/resources/events", h.HandleListEvents)
+	ar.Get("/resources/events/{namespace}", h.HandleListEvents)
+	ar.Get("/resources/events/{namespace}/{name}", h.HandleGetEvent)
 
 	// RBAC Viewer (read-only)
 	ar.Get("/resources/roles", h.HandleListRoles)

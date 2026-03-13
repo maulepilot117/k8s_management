@@ -3,6 +3,7 @@ import { useEffect } from "preact/hooks";
 import { IS_BROWSER } from "fresh/runtime";
 import { useAuth } from "@/lib/auth.ts";
 import { apiGet } from "@/lib/api.ts";
+import { selectedNamespace } from "@/lib/namespace.ts";
 
 interface NamespaceMeta {
   metadata: { name: string };
@@ -11,7 +12,6 @@ interface NamespaceMeta {
 export default function TopBar() {
   const { user, logout } = useAuth();
   const namespaces = useSignal<string[]>([]);
-  const selectedNs = useSignal("all");
   const showUserMenu = useSignal(false);
 
   // Fetch namespaces on mount
@@ -42,9 +42,9 @@ export default function TopBar() {
         </label>
         <select
           id="namespace-select"
-          value={selectedNs.value}
+          value={selectedNamespace.value}
           onChange={(e) => {
-            selectedNs.value = (e.target as HTMLSelectElement).value;
+            selectedNamespace.value = (e.target as HTMLSelectElement).value;
           }}
           class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-brand focus:ring-1 focus:ring-brand dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
         >
