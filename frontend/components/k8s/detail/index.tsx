@@ -59,25 +59,3 @@ const OVERVIEW_COMPONENTS: Record<string, OverviewComponent> = {
 export function getOverviewComponent(kind: string): OverviewComponent {
   return OVERVIEW_COMPONENTS[kind] ?? GenericOverview;
 }
-
-export {
-  ClusterRoleBindingOverview,
-  ClusterRoleOverview,
-  ConfigMapOverview,
-  CronJobOverview,
-  DaemonSetOverview,
-  DeploymentOverview,
-  GenericOverview,
-  IngressOverview,
-  JobOverview,
-  NamespaceOverview,
-  NetworkPolicyOverview,
-  NodeOverview,
-  PodOverview,
-  PVCOverview,
-  RoleBindingOverview,
-  RoleOverview,
-  SecretOverview,
-  ServiceOverview,
-  StatefulSetOverview,
-};

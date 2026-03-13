@@ -1,5 +1,5 @@
 import { useSignal } from "@preact/signals";
-import { useCallback, useEffect, useRef } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import { IS_BROWSER } from "fresh/runtime";
 import { apiGet } from "@/lib/api.ts";
 import { RESOURCE_API_KINDS, RESOURCE_DETAIL_PATHS } from "@/lib/constants.ts";
@@ -209,8 +209,8 @@ export default function ResourceDetail({
     [fetchEvents],
   );
 
-  // Generate YAML from resource
-  const yamlContent = useCallback(() => {
+  // Generate YAML from resource — memoized to avoid re-stringify on unrelated renders
+  const yamlContent = useMemo(() => {
     if (!resource.value) return "";
     const obj = structuredClone(resource.value);
     if (!showManagedFields.value) {
@@ -221,7 +221,7 @@ export default function ResourceDetail({
     } catch {
       return JSON.stringify(obj, null, 2);
     }
-  }, []);
+  }, [resource.value, showManagedFields.value]);
 
   // Build back-to-list URL
   const listUrl = RESOURCE_DETAIL_PATHS[kind] ?? "/";
@@ -279,7 +279,7 @@ export default function ResourceDetail({
                 Show managed fields
               </label>
             </div>
-            <CodeBlock code={yamlContent()} language="yaml" />
+            <CodeBlock code={yamlContent} language="yaml" />
           </div>
         );
       },
