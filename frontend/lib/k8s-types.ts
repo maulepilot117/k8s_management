@@ -39,6 +39,16 @@ export interface K8sMetadata {
   labels?: Record<string, string>;
   annotations?: Record<string, string>;
   resourceVersion?: string;
+  ownerReferences?: Array<{
+    apiVersion: string;
+    kind: string;
+    name: string;
+    uid: string;
+    controller?: boolean;
+  }>;
+  finalizers?: string[];
+  deletionTimestamp?: string;
+  managedFields?: unknown[];
 }
 
 /** Generic k8s resource with metadata — base for all resource types. */
@@ -65,7 +75,7 @@ export interface Pod extends K8sResource {
     containers: Array<{ name: string; image: string }>;
     restartPolicy?: string;
   };
-  status: PodStatus;
+  status?: PodStatus;
 }
 
 // -- Deployments --
@@ -73,14 +83,26 @@ export interface Deployment extends K8sResource {
   spec: {
     replicas?: number;
     selector: { matchLabels?: Record<string, string> };
-    template: unknown;
+    template?: {
+      spec?: { containers?: Array<{ name: string; image: string }> };
+    };
+    strategy?: {
+      type?: string;
+      rollingUpdate?: { maxUnavailable?: unknown; maxSurge?: unknown };
+    };
   };
-  status: {
+  status?: {
     replicas?: number;
     readyReplicas?: number;
     availableReplicas?: number;
     updatedReplicas?: number;
-    conditions?: Array<{ type: string; status: string; reason?: string }>;
+    conditions?: Array<{
+      type: string;
+      status: string;
+      reason?: string;
+      message?: string;
+      lastTransitionTime?: string;
+    }>;
   };
 }
 
@@ -90,8 +112,12 @@ export interface StatefulSet extends K8sResource {
     replicas?: number;
     serviceName: string;
     selector: { matchLabels?: Record<string, string> };
+    updateStrategy?: {
+      type?: string;
+      rollingUpdate?: { partition?: number };
+    };
   };
-  status: {
+  status?: {
     replicas?: number;
     readyReplicas?: number;
     currentReplicas?: number;
@@ -104,10 +130,10 @@ export interface DaemonSet extends K8sResource {
   spec: {
     selector: { matchLabels?: Record<string, string> };
   };
-  status: {
-    desiredNumberScheduled: number;
-    currentNumberScheduled: number;
-    numberReady: number;
+  status?: {
+    desiredNumberScheduled?: number;
+    currentNumberScheduled?: number;
+    numberReady?: number;
     numberAvailable?: number;
   };
 }
@@ -184,6 +210,7 @@ export interface PersistentVolumeClaim extends K8sResource {
   spec: {
     accessModes?: string[];
     storageClassName?: string;
+    volumeName?: string;
     resources?: { requests?: Record<string, string> };
   };
   status?: {
@@ -214,6 +241,7 @@ export interface CronJob extends K8sResource {
   spec: {
     schedule: string;
     suspend?: boolean;
+    concurrencyPolicy?: string;
     jobTemplate: unknown;
   };
   status?: {
