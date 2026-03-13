@@ -15,6 +15,7 @@ import (
 	"github.com/kubecenter/kubecenter/internal/k8s/resources"
 	"github.com/kubecenter/kubecenter/internal/server/middleware" // used by Deps type
 	"github.com/kubecenter/kubecenter/internal/websocket"
+	"github.com/kubecenter/kubecenter/internal/wizard"
 	yamlpkg "github.com/kubecenter/kubecenter/internal/yaml"
 )
 
@@ -34,6 +35,7 @@ type Server struct {
 	YAMLRateLimiter *middleware.RateLimiter
 	ResourceHandler *resources.Handler
 	YAMLHandler     *yamlpkg.Handler
+	WizardHandler   *wizard.Handler
 	Hub             *websocket.Hub
 	ready           func() bool
 }
@@ -96,6 +98,9 @@ func New(deps Deps) *Server {
 			AuditLogger: deps.AuditLogger,
 			Logger:      deps.Logger,
 			ClusterID:   deps.Config.ClusterID,
+		}
+		s.WizardHandler = &wizard.Handler{
+			Logger: deps.Logger,
 		}
 	}
 
