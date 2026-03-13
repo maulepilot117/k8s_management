@@ -86,12 +86,35 @@ func (d *DeploymentInput) Validate() []FieldError {
 	}
 	if d.Namespace == "" {
 		errs = append(errs, FieldError{Field: "namespace", Message: "is required"})
+	} else if !dnsLabelRegex.MatchString(d.Namespace) {
+		errs = append(errs, FieldError{Field: "namespace", Message: "must be a valid DNS label"})
 	}
 	if d.Image == "" {
 		errs = append(errs, FieldError{Field: "image", Message: "is required"})
+	} else if len(d.Image) > 512 {
+		errs = append(errs, FieldError{Field: "image", Message: "must be 512 characters or less"})
 	}
 	if d.Replicas < 0 || d.Replicas > 1000 {
 		errs = append(errs, FieldError{Field: "replicas", Message: "must be between 0 and 1000"})
+	}
+
+	// Validate label/map sizes
+	if len(d.Labels) > 50 {
+		errs = append(errs, FieldError{Field: "labels", Message: "must have 50 or fewer entries"})
+	}
+	for k, v := range d.Labels {
+		if len(k) > 253 {
+			errs = append(errs, FieldError{Field: "labels", Message: fmt.Sprintf("key %q exceeds 253 characters", k)})
+		}
+		if len(v) > 63 {
+			errs = append(errs, FieldError{Field: "labels", Message: fmt.Sprintf("value for key %q exceeds 63 characters", k)})
+		}
+	}
+	if len(d.Ports) > 20 {
+		errs = append(errs, FieldError{Field: "ports", Message: "must have 20 or fewer entries"})
+	}
+	if len(d.EnvVars) > 100 {
+		errs = append(errs, FieldError{Field: "envVars", Message: "must have 100 or fewer entries"})
 	}
 
 	// Validate ports
@@ -125,6 +148,12 @@ func (d *DeploymentInput) Validate() []FieldError {
 			errs = append(errs, FieldError{
 				Field:   fmt.Sprintf("envVars[%d].name", i),
 				Message: "must start with a letter or underscore and contain only alphanumeric characters and underscores",
+			})
+		}
+		if e.ConfigMapRef != "" && e.SecretRef != "" {
+			errs = append(errs, FieldError{
+				Field:   fmt.Sprintf("envVars[%d]", i),
+				Message: "cannot have both configMapRef and secretRef",
 			})
 		}
 		hasRef := e.ConfigMapRef != "" || e.SecretRef != ""
@@ -174,7 +203,8 @@ func (d *DeploymentInput) Validate() []FieldError {
 }
 
 // ToDeployment converts the wizard input to a typed Kubernetes Deployment.
-func (d *DeploymentInput) ToDeployment() *appsv1.Deployment {
+// Validate() should be called before ToDeployment() to ensure inputs are well-formed.
+func (d *DeploymentInput) ToDeployment() (*appsv1.Deployment, error) {
 	lbls := d.Labels
 	if lbls == nil {
 		lbls = make(map[string]string)
@@ -233,16 +263,32 @@ func (d *DeploymentInput) ToDeployment() *appsv1.Deployment {
 		reqs := corev1.ResourceList{}
 		lims := corev1.ResourceList{}
 		if d.Resources.RequestCPU != "" {
-			reqs[corev1.ResourceCPU] = resource.MustParse(d.Resources.RequestCPU)
+			q, err := resource.ParseQuantity(d.Resources.RequestCPU)
+			if err != nil {
+				return nil, fmt.Errorf("invalid CPU request %q: %w", d.Resources.RequestCPU, err)
+			}
+			reqs[corev1.ResourceCPU] = q
 		}
 		if d.Resources.RequestMemory != "" {
-			reqs[corev1.ResourceMemory] = resource.MustParse(d.Resources.RequestMemory)
+			q, err := resource.ParseQuantity(d.Resources.RequestMemory)
+			if err != nil {
+				return nil, fmt.Errorf("invalid memory request %q: %w", d.Resources.RequestMemory, err)
+			}
+			reqs[corev1.ResourceMemory] = q
 		}
 		if d.Resources.LimitCPU != "" {
-			lims[corev1.ResourceCPU] = resource.MustParse(d.Resources.LimitCPU)
+			q, err := resource.ParseQuantity(d.Resources.LimitCPU)
+			if err != nil {
+				return nil, fmt.Errorf("invalid CPU limit %q: %w", d.Resources.LimitCPU, err)
+			}
+			lims[corev1.ResourceCPU] = q
 		}
 		if d.Resources.LimitMemory != "" {
-			lims[corev1.ResourceMemory] = resource.MustParse(d.Resources.LimitMemory)
+			q, err := resource.ParseQuantity(d.Resources.LimitMemory)
+			if err != nil {
+				return nil, fmt.Errorf("invalid memory limit %q: %w", d.Resources.LimitMemory, err)
+			}
+			lims[corev1.ResourceMemory] = q
 		}
 		if len(reqs) > 0 || len(lims) > 0 {
 			container.Resources = corev1.ResourceRequirements{}
@@ -266,6 +312,9 @@ func (d *DeploymentInput) ToDeployment() *appsv1.Deployment {
 	}
 
 	replicas := d.Replicas
+	if replicas == 0 {
+		replicas = 1 // Default to 1 replica for creation wizards
+	}
 	dep := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
@@ -311,7 +360,7 @@ func (d *DeploymentInput) ToDeployment() *appsv1.Deployment {
 		}
 	}
 
-	return dep
+	return dep, nil
 }
 
 func buildProbe(p *ProbeInput) *corev1.Probe {

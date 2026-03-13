@@ -96,16 +96,6 @@ export default function DeploymentWizard() {
       });
   }, []);
 
-  // Auto-sync app label with name
-  useEffect(() => {
-    if (!IS_BROWSER) return;
-    const f = form.value;
-    const appLabel = f.labels.find((l) => l.key === "app");
-    if (appLabel && appLabel.value === "") {
-      // Only auto-fill when the user hasn't manually set it
-    }
-  }, []);
-
   // beforeunload guard
   useEffect(() => {
     if (!IS_BROWSER) return;
@@ -333,7 +323,7 @@ export default function DeploymentWizard() {
             }}
             loading={previewLoading.value}
             error={previewError.value}
-            resourceKind="deployments"
+            detailBasePath="/workloads/deployments"
           />
         )}
       </div>

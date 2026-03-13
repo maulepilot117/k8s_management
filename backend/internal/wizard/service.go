@@ -36,6 +36,27 @@ func (s *ServiceInput) Validate() []FieldError {
 	}
 	if s.Namespace == "" {
 		errs = append(errs, FieldError{Field: "namespace", Message: "is required"})
+	} else if !dnsLabelRegex.MatchString(s.Namespace) {
+		errs = append(errs, FieldError{Field: "namespace", Message: "must be a valid DNS label"})
+	}
+
+	// Validate label/map sizes
+	if len(s.Labels) > 50 {
+		errs = append(errs, FieldError{Field: "labels", Message: "must have 50 or fewer entries"})
+	}
+	for k, v := range s.Labels {
+		if len(k) > 253 {
+			errs = append(errs, FieldError{Field: "labels", Message: fmt.Sprintf("key %q exceeds 253 characters", k)})
+		}
+		if len(v) > 63 {
+			errs = append(errs, FieldError{Field: "labels", Message: fmt.Sprintf("value for key %q exceeds 63 characters", k)})
+		}
+	}
+	if len(s.Selector) > 20 {
+		errs = append(errs, FieldError{Field: "selector", Message: "must have 20 or fewer entries"})
+	}
+	if len(s.Ports) > 100 {
+		errs = append(errs, FieldError{Field: "ports", Message: "must have 100 or fewer entries"})
 	}
 
 	validTypes := map[string]bool{"ClusterIP": true, "NodePort": true, "LoadBalancer": true}
@@ -51,7 +72,15 @@ func (s *ServiceInput) Validate() []FieldError {
 		errs = append(errs, FieldError{Field: "ports", Message: "at least one port is required"})
 	}
 
+	seenPorts := make(map[int32]bool)
 	for i, p := range s.Ports {
+		if seenPorts[p.Port] {
+			errs = append(errs, FieldError{
+				Field:   fmt.Sprintf("ports[%d].port", i),
+				Message: fmt.Sprintf("duplicate port %d", p.Port),
+			})
+		}
+		seenPorts[p.Port] = true
 		if p.Port < 1 || p.Port > 65535 {
 			errs = append(errs, FieldError{
 				Field:   fmt.Sprintf("ports[%d].port", i),

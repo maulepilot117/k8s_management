@@ -40,7 +40,11 @@ func (h *Handler) HandleDeploymentPreview(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	dep := input.ToDeployment()
+	dep, err := input.ToDeployment()
+	if err != nil {
+		httputil.WriteError(w, http.StatusUnprocessableEntity, err.Error(), "")
+		return
+	}
 	yamlBytes, err := sigsyaml.Marshal(dep)
 	if err != nil {
 		h.Logger.Error("failed to marshal deployment to YAML", "error", err)

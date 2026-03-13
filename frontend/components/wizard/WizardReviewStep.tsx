@@ -26,8 +26,8 @@ interface WizardReviewStepProps {
   onYamlChange: (yaml: string) => void;
   loading: boolean;
   error: string | null;
-  /** Resource kind for building the detail link (e.g. "deployments") */
-  resourceKind: string;
+  /** Base path for building the detail link (e.g. "/workloads/deployments") */
+  detailBasePath: string;
 }
 
 export function WizardReviewStep({
@@ -35,7 +35,7 @@ export function WizardReviewStep({
   onYamlChange,
   loading,
   error,
-  resourceKind,
+  detailBasePath,
 }: WizardReviewStepProps) {
   const applying = useSignal(false);
   const applyError = useSignal<string | null>(null);
@@ -107,9 +107,7 @@ export function WizardReviewStep({
     const hasFailures = result.summary.failed > 0;
     const firstResult = result.results[0];
     const detailPath = firstResult && !firstResult.error
-      ? `/${
-        resourceKind === "deployments" ? "workloads" : "networking"
-      }/${resourceKind}/${firstResult.namespace ?? ""}/${firstResult.name}`
+      ? `${detailBasePath}/${firstResult.namespace ?? ""}/${firstResult.name}`
       : null;
 
     return (

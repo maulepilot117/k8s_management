@@ -281,7 +281,7 @@ export default function ServiceWizard() {
             }}
             loading={previewLoading.value}
             error={previewError.value}
-            resourceKind="services"
+            detailBasePath="/networking/services"
           />
         )}
       </div>

@@ -174,7 +174,10 @@ func TestToDeployment_Basic(t *testing.T) {
 	d := DeploymentInput{
 		Name: "my-app", Namespace: "test", Image: "nginx:latest", Replicas: 2,
 	}
-	dep := d.ToDeployment()
+	dep, err := d.ToDeployment()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if dep.TypeMeta.APIVersion != "apps/v1" {
 		t.Errorf("expected apiVersion apps/v1, got %s", dep.TypeMeta.APIVersion)
@@ -201,7 +204,10 @@ func TestToDeployment_WithPorts(t *testing.T) {
 		Name: "app", Namespace: "default", Image: "img",
 		Ports: []PortInput{{Name: "http", ContainerPort: 80, Protocol: "TCP"}, {ContainerPort: 443, Protocol: "UDP"}},
 	}
-	dep := d.ToDeployment()
+	dep, err := d.ToDeployment()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	ports := dep.Spec.Template.Spec.Containers[0].Ports
 	if len(ports) != 2 {
 		t.Fatalf("expected 2 ports, got %d", len(ports))
@@ -220,7 +226,10 @@ func TestToDeployment_WithEnvVars(t *testing.T) {
 			{Name: "FROM_SEC", SecretRef: "my-sec", Key: "k2"},
 		},
 	}
-	dep := d.ToDeployment()
+	dep, err := d.ToDeployment()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	envs := dep.Spec.Template.Spec.Containers[0].Env
 	if len(envs) != 3 {
 		t.Fatalf("expected 3 env vars, got %d", len(envs))
@@ -241,7 +250,10 @@ func TestToDeployment_WithResources(t *testing.T) {
 		Name: "app", Namespace: "default", Image: "img",
 		Resources: &ResourcesInput{RequestCPU: "100m", LimitMemory: "512Mi"},
 	}
-	dep := d.ToDeployment()
+	dep, err := d.ToDeployment()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	res := dep.Spec.Template.Spec.Containers[0].Resources
 	if res.Requests.Cpu().String() != "100m" {
 		t.Errorf("unexpected CPU request: %s", res.Requests.Cpu().String())
@@ -259,7 +271,10 @@ func TestToDeployment_WithProbes(t *testing.T) {
 			Readiness: &ProbeInput{Type: "tcp", Port: 3306},
 		},
 	}
-	dep := d.ToDeployment()
+	dep, err := d.ToDeployment()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	lp := dep.Spec.Template.Spec.Containers[0].LivenessProbe
 	rp := dep.Spec.Template.Spec.Containers[0].ReadinessProbe
 	if lp == nil || lp.HTTPGet == nil || lp.HTTPGet.Path != "/healthz" {
@@ -275,7 +290,10 @@ func TestToDeployment_WithStrategy(t *testing.T) {
 		Name: "app", Namespace: "default", Image: "img",
 		Strategy: &StrategyInput{Type: "RollingUpdate", MaxSurge: "25%", MaxUnavailable: "1"},
 	}
-	dep := d.ToDeployment()
+	dep, err := d.ToDeployment()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if string(dep.Spec.Strategy.Type) != "RollingUpdate" {
 		t.Error("expected RollingUpdate strategy")
 	}
@@ -292,7 +310,10 @@ func TestToDeployment_PreservesExistingLabels(t *testing.T) {
 		Name: "app", Namespace: "default", Image: "img",
 		Labels: map[string]string{"team": "backend", "app": "custom"},
 	}
-	dep := d.ToDeployment()
+	dep, err := d.ToDeployment()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if dep.Labels["app"] != "custom" {
 		t.Error("should not override existing app label")
 	}
