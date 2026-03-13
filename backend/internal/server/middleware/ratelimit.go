@@ -33,10 +33,15 @@ type RateLimiter struct {
 
 // NewRateLimiter creates a rate limiter with default settings (5 req/min).
 func NewRateLimiter() *RateLimiter {
+	return NewRateLimiterWithRate(defaultRate, defaultWindow)
+}
+
+// NewRateLimiterWithRate creates a rate limiter with the specified rate and window.
+func NewRateLimiterWithRate(rate int, window time.Duration) *RateLimiter {
 	return &RateLimiter{
 		buckets: make(map[string]*bucket),
-		rate:    defaultRate,
-		window:  defaultWindow,
+		rate:    rate,
+		window:  window,
 	}
 }
 

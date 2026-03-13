@@ -31,6 +31,7 @@ type Server struct {
 	RBACChecker     *auth.RBACChecker
 	AuditLogger     audit.Logger
 	RateLimiter     *middleware.RateLimiter
+	YAMLRateLimiter *middleware.RateLimiter
 	ResourceHandler *resources.Handler
 	YAMLHandler     *yamlpkg.Handler
 	Hub             *websocket.Hub
@@ -47,9 +48,10 @@ type Deps struct {
 	LocalAuth     *auth.LocalProvider
 	Sessions      *auth.SessionStore
 	RBACChecker   *auth.RBACChecker
-	AuditLogger   audit.Logger
-	RateLimiter   *middleware.RateLimiter
-	Hub           *websocket.Hub
+	AuditLogger     audit.Logger
+	RateLimiter     *middleware.RateLimiter
+	YAMLRateLimiter *middleware.RateLimiter
+	Hub             *websocket.Hub
 	AccessChecker *resources.AccessChecker
 	ReadyFn       func() bool
 }
@@ -66,9 +68,10 @@ func New(deps Deps) *Server {
 		LocalAuth:    deps.LocalAuth,
 		Sessions:     deps.Sessions,
 		RBACChecker:  deps.RBACChecker,
-		AuditLogger:  deps.AuditLogger,
-		RateLimiter:  deps.RateLimiter,
-		Hub:          deps.Hub,
+		AuditLogger:     deps.AuditLogger,
+		RateLimiter:     deps.RateLimiter,
+		YAMLRateLimiter: deps.YAMLRateLimiter,
+		Hub:             deps.Hub,
 		ready:        deps.ReadyFn,
 	}
 

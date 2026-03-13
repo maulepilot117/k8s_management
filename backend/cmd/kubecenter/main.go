@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/kubecenter/kubecenter/internal/audit"
 	"github.com/kubecenter/kubecenter/internal/auth"
@@ -107,6 +108,8 @@ func main() {
 	auditLogger := audit.NewSlogLogger(logger)
 	rateLimiter := middleware.NewRateLimiter()
 	rateLimiter.StartCleanup(ctx)
+	yamlRateLimiter := middleware.NewRateLimiterWithRate(30, time.Minute)
+	yamlRateLimiter.StartCleanup(ctx)
 
 	// Ready state: true after informer sync, false during shutdown
 	var ready atomic.Bool
@@ -123,8 +126,9 @@ func main() {
 		Sessions:      sessions,
 		RBACChecker:   rbacChecker,
 		AuditLogger:   auditLogger,
-		RateLimiter:   rateLimiter,
-		Hub:           hub,
+		RateLimiter:     rateLimiter,
+		YAMLRateLimiter: yamlRateLimiter,
+		Hub:             hub,
 		AccessChecker: accessChecker,
 		ReadyFn:       ready.Load,
 	})
