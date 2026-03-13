@@ -14,6 +14,7 @@ import (
 	"github.com/kubecenter/kubecenter/internal/k8s"
 	"github.com/kubecenter/kubecenter/internal/k8s/resources"
 	"github.com/kubecenter/kubecenter/internal/server/middleware" // used by Deps type
+	"github.com/kubecenter/kubecenter/internal/websocket"
 )
 
 // Server holds all dependencies needed by HTTP handlers.
@@ -30,22 +31,25 @@ type Server struct {
 	AuditLogger     audit.Logger
 	RateLimiter     *middleware.RateLimiter
 	ResourceHandler *resources.Handler
+	Hub             *websocket.Hub
 	ready           func() bool
 }
 
 // Deps holds all dependencies needed to create a Server.
 type Deps struct {
-	Config       *config.Config
-	K8sClient    *k8s.ClientFactory
-	Informers    *k8s.InformerManager
-	Logger       *slog.Logger
-	TokenManager *auth.TokenManager
-	LocalAuth    *auth.LocalProvider
-	Sessions     *auth.SessionStore
-	RBACChecker  *auth.RBACChecker
-	AuditLogger  audit.Logger
-	RateLimiter  *middleware.RateLimiter
-	ReadyFn      func() bool
+	Config        *config.Config
+	K8sClient     *k8s.ClientFactory
+	Informers     *k8s.InformerManager
+	Logger        *slog.Logger
+	TokenManager  *auth.TokenManager
+	LocalAuth     *auth.LocalProvider
+	Sessions      *auth.SessionStore
+	RBACChecker   *auth.RBACChecker
+	AuditLogger   audit.Logger
+	RateLimiter   *middleware.RateLimiter
+	Hub           *websocket.Hub
+	AccessChecker *resources.AccessChecker
+	ReadyFn       func() bool
 }
 
 // New creates a configured HTTP server with middleware and routes.
@@ -62,15 +66,21 @@ func New(deps Deps) *Server {
 		RBACChecker:  deps.RBACChecker,
 		AuditLogger:  deps.AuditLogger,
 		RateLimiter:  deps.RateLimiter,
+		Hub:          deps.Hub,
 		ready:        deps.ReadyFn,
 	}
 
 	// Build resource handler if k8s dependencies are available (not in auth-only tests)
 	if deps.K8sClient != nil && deps.Informers != nil {
+		ac := deps.AccessChecker
+		if ac == nil {
+			// Fallback for tests that don't provide an AccessChecker
+			ac = resources.NewAccessChecker(deps.K8sClient, deps.Logger)
+		}
 		s.ResourceHandler = &resources.Handler{
 			K8sClient:     deps.K8sClient,
 			Informers:     deps.Informers,
-			AccessChecker: resources.NewAccessChecker(deps.K8sClient, deps.Logger),
+			AccessChecker: ac,
 			AuditLogger:   deps.AuditLogger,
 			Logger:        deps.Logger,
 			TaskManager:   resources.NewTaskManager(),
@@ -86,7 +96,8 @@ func New(deps Deps) *Server {
 	s.Router.Use(slogMiddleware(deps.Logger))
 	s.Router.Use(chimw.Recoverer)
 	s.Router.Use(chimw.CleanPath)
-	s.Router.Use(chimw.Timeout(deps.Config.Server.RequestTimeout))
+	// Note: Timeout is applied per-route-group (not globally) so that
+	// long-lived WebSocket connections are not terminated.
 	s.Router.Use(middleware.CORS(deps.Config))
 
 	s.registerRoutes()
