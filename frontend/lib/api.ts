@@ -149,3 +149,15 @@ export const apiPut = <T>(path: string, body: unknown) =>
 
 export const apiDelete = <T>(path: string) =>
   api<T>(path, { method: "DELETE" });
+
+/** POST with a raw string body (e.g., YAML content). */
+export const apiPostRaw = <T>(
+  path: string,
+  body: string,
+  contentType = "text/yaml",
+) =>
+  api<T>(path, {
+    method: "POST",
+    body,
+    headers: { "Content-Type": contentType },
+  });

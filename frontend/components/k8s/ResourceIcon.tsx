@@ -158,6 +158,12 @@ const icons: Record<string, ReturnType<typeof SVGContent>> = {
       <path d="M10 8v6M15 4l2-2M3 4l2-2" />
     </>
   ),
+  yaml: (
+    <>
+      <path d="M4 3h12a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1z" />
+      <path d="M7 7l3 3-3 3M11 13h3" />
+    </>
+  ),
   default: (
     <>
       <rect x="3" y="3" width="14" height="14" rx="2" />

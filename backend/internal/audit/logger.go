@@ -10,10 +10,11 @@ import (
 type Action string
 
 const (
-	ActionCreate Action = "create"
-	ActionUpdate Action = "update"
-	ActionDelete Action = "delete"
-	ActionReveal Action = "reveal" // secret reveal
+	ActionCreate  Action = "create"
+	ActionUpdate  Action = "update"
+	ActionDelete  Action = "delete"
+	ActionReveal  Action = "reveal" // secret reveal
+	ActionApply   Action = "apply"  // YAML server-side apply
 	ActionLogin   Action = "login"
 	ActionLogout  Action = "logout"
 	ActionRefresh Action = "refresh"

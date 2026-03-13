@@ -1,7 +1,7 @@
 import { useSignal } from "@preact/signals";
 import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import { IS_BROWSER } from "fresh/runtime";
-import { apiGet } from "@/lib/api.ts";
+import { apiGet, apiPostRaw } from "@/lib/api.ts";
 import { RESOURCE_API_KINDS, RESOURCE_DETAIL_PATHS } from "@/lib/constants.ts";
 import {
   EVENT_DELETED,
@@ -11,7 +11,6 @@ import {
 } from "@/lib/ws.ts";
 import { selectedNamespace } from "@/lib/namespace.ts";
 import { Tabs } from "@/components/ui/Tabs.tsx";
-import { CodeBlock } from "@/components/ui/CodeBlock.tsx";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner.tsx";
 import { ErrorBanner } from "@/components/ui/ErrorBanner.tsx";
 import { ResourceIcon } from "@/components/k8s/ResourceIcon.tsx";
@@ -20,6 +19,7 @@ import type { K8sEvent, K8sResource } from "@/lib/k8s-types.ts";
 import { getOverviewComponent } from "@/components/k8s/detail/index.tsx";
 import { MetadataSection } from "@/components/k8s/detail/MetadataSection.tsx";
 import { stringify } from "yaml";
+import YamlEditor from "@/islands/YamlEditor.tsx";
 
 interface ResourceDetailProps {
   kind: string;
@@ -61,6 +61,26 @@ export default function ResourceDetail({
 
   // YAML options
   const showManagedFields = useSignal(false);
+
+  // YAML edit state
+  const yamlEditing = useSignal(false);
+  const yamlEditContent = useSignal("");
+  const yamlApplying = useSignal(false);
+  const yamlApplyError = useSignal<string | null>(null);
+  const yamlApplySuccess = useSignal(false);
+  const isSecret = kind === "secrets";
+
+  // Dirty state navigation guard (D9)
+  useEffect(() => {
+    if (!IS_BROWSER) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      if (yamlEditing.value && yamlEditContent.value !== yamlContent) {
+        e.preventDefault();
+      }
+    };
+    globalThis.addEventListener("beforeunload", handler);
+    return () => globalThis.removeEventListener("beforeunload", handler);
+  }, []);
 
   // Periodic tick to refresh age displays (every 30s)
   const tick = useSignal(0);
@@ -271,35 +291,185 @@ export default function ResourceDetail({
         if (loading.value || !resource.value) {
           return <LoadingSpinner />;
         }
+
+        const isDirty = yamlEditing.value &&
+          yamlEditContent.value !== yamlContent;
+
         return (
           <div class="p-6 space-y-4">
+            {/* Updated externally banner */}
             {updated.value && (
               <div class="flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
                 Resource was updated externally.
                 <button
                   type="button"
-                  onClick={() => fetchResource()}
+                  onClick={() => {
+                    fetchResource();
+                    yamlEditing.value = false;
+                    yamlApplyError.value = null;
+                    yamlApplySuccess.value = false;
+                  }}
                   class="font-medium underline hover:no-underline"
                 >
                   Refresh
                 </button>
               </div>
             )}
-            <div class="flex items-center gap-3">
-              <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                <input
-                  type="checkbox"
-                  checked={showManagedFields.value}
-                  onChange={(e) => {
-                    showManagedFields.value =
-                      (e.target as HTMLInputElement).checked;
+
+            {/* Apply success banner */}
+            {yamlApplySuccess.value && (
+              <div class="flex items-center gap-3 rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400">
+                Changes applied successfully.
+                <button
+                  type="button"
+                  onClick={() => {
+                    yamlApplySuccess.value = false;
                   }}
-                  class="rounded border-slate-300"
-                />
-                Show managed fields
-              </label>
+                  class="font-medium underline hover:no-underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* Apply error banner */}
+            {yamlApplyError.value && (
+              <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                <p class="font-medium">Apply failed</p>
+                <p class="mt-1">{yamlApplyError.value}</p>
+              </div>
+            )}
+
+            {/* Toolbar */}
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={showManagedFields.value}
+                    onChange={(e) => {
+                      showManagedFields.value =
+                        (e.target as HTMLInputElement).checked;
+                    }}
+                    class="rounded border-slate-300"
+                    disabled={yamlEditing.value}
+                  />
+                  Show managed fields
+                </label>
+              </div>
+              <div class="flex items-center gap-2">
+                {!yamlEditing.value
+                  ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          yamlEditContent.value = yamlContent;
+                          yamlEditing.value = true;
+                          yamlApplyError.value = null;
+                          yamlApplySuccess.value = false;
+                        }}
+                        disabled={isSecret}
+                        title={isSecret
+                          ? "Secrets cannot be edited via YAML"
+                          : "Edit YAML"}
+                        class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const exportPath = namespace
+                              ? `/v1/yaml/export/${kind}/${namespace}/${name}`
+                              : `/v1/yaml/export/${kind}/_/${name}`;
+                            const res = await apiGet<string>(exportPath);
+                            const blob = new Blob(
+                              [
+                                typeof res.data === "string"
+                                  ? res.data
+                                  : JSON.stringify(res.data, null, 2),
+                              ],
+                              { type: "text/yaml" },
+                            );
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = `${name}.yaml`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch (err) {
+                            yamlApplyError.value = err instanceof Error
+                              ? err.message
+                              : "Export failed";
+                          }
+                        }}
+                        disabled={isSecret}
+                        title={isSecret
+                          ? "Secrets cannot be exported (values are masked)"
+                          : "Export clean YAML"}
+                        class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                      >
+                        Export
+                      </button>
+                    </>
+                  )
+                  : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          yamlApplying.value = true;
+                          yamlApplyError.value = null;
+                          yamlApplySuccess.value = false;
+                          try {
+                            await apiPostRaw(
+                              "/v1/yaml/apply",
+                              yamlEditContent.value,
+                            );
+                            yamlApplySuccess.value = true;
+                            yamlEditing.value = false;
+                            await fetchResource();
+                          } catch (err) {
+                            yamlApplyError.value = err instanceof Error
+                              ? err.message
+                              : "Apply failed";
+                          } finally {
+                            yamlApplying.value = false;
+                          }
+                        }}
+                        disabled={yamlApplying.value || !isDirty}
+                        class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {yamlApplying.value ? "Applying..." : "Apply"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          yamlEditing.value = false;
+                          yamlEditContent.value = "";
+                          yamlApplyError.value = null;
+                        }}
+                        disabled={yamlApplying.value}
+                        class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                      >
+                        Discard
+                      </button>
+                    </>
+                  )}
+              </div>
             </div>
-            <CodeBlock code={yamlContent} language="yaml" />
+
+            {/* YAML Editor */}
+            <YamlEditor
+              value={yamlEditing.value ? yamlEditContent.value : yamlContent}
+              onChange={(v) => {
+                yamlEditContent.value = v;
+              }}
+              readOnly={!yamlEditing.value}
+              height="500px"
+            />
           </div>
         );
       },

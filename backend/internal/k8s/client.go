@@ -10,8 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -128,6 +133,31 @@ func (f *ClientFactory) ClientForUser(username string, groups []string) (*kubern
 	})
 
 	return cs, nil
+}
+
+// DynamicClientForUser returns an impersonating dynamic.Interface for the given
+// user. This is used for YAML apply operations where the resource type is not
+// known at compile time (arbitrary apiVersion/kind).
+func (f *ClientFactory) DynamicClientForUser(username string, groups []string) (dynamic.Interface, error) {
+	cfg := rest.CopyConfig(f.baseConfig)
+	cfg.Impersonate = rest.ImpersonationConfig{
+		UserName: username,
+		Groups:   groups,
+	}
+	return dynamic.NewForConfig(cfg)
+}
+
+// RESTMapper returns a cached discovery-based REST mapper for resolving
+// GVK (GroupVersionKind) to GVR (GroupVersionResource). The mapper uses
+// an in-memory discovery cache that automatically invalidates on miss.
+func (f *ClientFactory) RESTMapper() meta.RESTMapper {
+	cachedClient := memory.NewMemCacheClient(f.baseClientset.Discovery())
+	return restmapper.NewDeferredDiscoveryRESTMapper(cachedClient)
+}
+
+// DiscoveryClient returns the base clientset's discovery interface.
+func (f *ClientFactory) DiscoveryClient() discovery.DiscoveryInterface {
+	return f.baseClientset.Discovery()
 }
 
 // StartCacheSweeper runs a background goroutine that evicts expired clients

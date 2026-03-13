@@ -45,6 +45,11 @@ func (s *Server) registerRoutes() {
 			if s.ResourceHandler != nil {
 				s.registerResourceRoutes(ar)
 			}
+
+			// YAML routes — only registered if k8s dependencies are available
+			if s.YAMLHandler != nil {
+				s.registerYAMLRoutes(ar)
+			}
 		})
 	})
 }
@@ -60,6 +65,14 @@ func (s *Server) registerResourceRoutes(ar chi.Router) {
 		rr.Use(resources.ValidateURLParams)
 		s.registerResourceEndpoints(rr, h)
 	})
+}
+
+func (s *Server) registerYAMLRoutes(ar chi.Router) {
+	h := s.YAMLHandler
+	ar.Post("/yaml/validate", h.HandleValidate)
+	ar.Post("/yaml/apply", h.HandleApply)
+	ar.Post("/yaml/diff", h.HandleDiff)
+	ar.Get("/yaml/export/{kind}/{namespace}/{name}", h.HandleExport)
 }
 
 func (s *Server) registerResourceEndpoints(ar chi.Router, h *resources.Handler) {

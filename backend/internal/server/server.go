@@ -15,6 +15,7 @@ import (
 	"github.com/kubecenter/kubecenter/internal/k8s/resources"
 	"github.com/kubecenter/kubecenter/internal/server/middleware" // used by Deps type
 	"github.com/kubecenter/kubecenter/internal/websocket"
+	yamlpkg "github.com/kubecenter/kubecenter/internal/yaml"
 )
 
 // Server holds all dependencies needed by HTTP handlers.
@@ -31,6 +32,7 @@ type Server struct {
 	AuditLogger     audit.Logger
 	RateLimiter     *middleware.RateLimiter
 	ResourceHandler *resources.Handler
+	YAMLHandler     *yamlpkg.Handler
 	Hub             *websocket.Hub
 	ready           func() bool
 }
@@ -85,6 +87,12 @@ func New(deps Deps) *Server {
 			Logger:        deps.Logger,
 			TaskManager:   resources.NewTaskManager(),
 			ClusterID:     deps.Config.ClusterID,
+		}
+		s.YAMLHandler = &yamlpkg.Handler{
+			K8sClient:   deps.K8sClient,
+			AuditLogger: deps.AuditLogger,
+			Logger:      deps.Logger,
+			ClusterID:   deps.Config.ClusterID,
 		}
 	}
 

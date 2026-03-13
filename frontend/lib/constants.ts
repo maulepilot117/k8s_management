@@ -148,4 +148,10 @@ export const NAV_SECTIONS = [
       },
     ],
   },
+  {
+    title: "Tools",
+    items: [
+      { label: "YAML Apply", href: "/tools/yaml-apply", icon: "yaml" },
+    ],
+  },
 ] as const;
