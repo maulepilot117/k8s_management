@@ -1,4 +1,4 @@
-# KubeCenter
+# k8sCenter
 
 A web-based Kubernetes management platform that delivers vCenter-level functionality for Kubernetes clusters. Deploy inside your cluster via Helm and manage everything through a browser.
 
@@ -128,7 +128,7 @@ Key endpoints:
 | POST | `/api/v1/auth/logout` | No | Invalidate refresh token |
 | GET | `/api/v1/auth/providers` | No | List configured auth providers |
 | GET | `/api/v1/auth/me` | Yes | Current user info + RBAC summary |
-| GET | `/api/v1/cluster/info` | Yes | Cluster version, node count, KubeCenter version |
+| GET | `/api/v1/cluster/info` | Yes | Cluster version, node count, k8sCenter version |
 
 Resource CRUD (18 types: deployments, statefulsets, daemonsets, pods, services, ingresses, configmaps, secrets, namespaces, nodes, pvcs, jobs, cronjobs, networkpolicies, roles, clusterroles, rolebindings, clusterrolebindings):
 
@@ -211,7 +211,7 @@ See [CLAUDE.md](CLAUDE.md) for the complete API reference.
 
 ## Security
 
-KubeCenter follows a strict security model:
+k8sCenter follows a strict security model:
 
 - All user-initiated Kubernetes API calls use **user impersonation** so that cluster RBAC is enforced server-side
 - The service account has **read-only** access for informer caches plus impersonation permissions
