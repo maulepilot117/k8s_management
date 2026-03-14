@@ -18,6 +18,7 @@ import (
 	"github.com/kubecenter/kubecenter/internal/config"
 	"github.com/kubecenter/kubecenter/internal/k8s"
 	"github.com/kubecenter/kubecenter/internal/k8s/resources"
+	"github.com/kubecenter/kubecenter/internal/monitoring"
 	"github.com/kubecenter/kubecenter/internal/server"
 	"github.com/kubecenter/kubecenter/internal/server/middleware"
 	"github.com/kubecenter/kubecenter/internal/websocket"
@@ -111,6 +112,15 @@ func main() {
 	yamlRateLimiter := middleware.NewRateLimiterWithRate(30, time.Minute)
 	yamlRateLimiter.StartCleanup(ctx)
 
+	// Initialize monitoring discoverer and start background discovery
+	monDiscoverer := monitoring.NewDiscoverer(k8sClient, cfg.Monitoring, logger)
+	go monDiscoverer.RunDiscoveryLoop(ctx)
+
+	monHandler := &monitoring.Handler{
+		Discoverer: monDiscoverer,
+		Logger:     logger,
+	}
+
 	// Ready state: true after informer sync, false during shutdown
 	var ready atomic.Bool
 	ready.Store(true)
@@ -128,9 +138,10 @@ func main() {
 		AuditLogger:   auditLogger,
 		RateLimiter:     rateLimiter,
 		YAMLRateLimiter: yamlRateLimiter,
-		Hub:             hub,
-		AccessChecker: accessChecker,
-		ReadyFn:       ready.Load,
+		Hub:               hub,
+		MonitoringHandler: monHandler,
+		AccessChecker:     accessChecker,
+		ReadyFn:           ready.Load,
 	})
 	httpServer := srv.HTTPServer()
 

@@ -149,6 +149,22 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    title: "Monitoring",
+    items: [
+      { label: "Overview", href: "/monitoring", icon: "monitoring" },
+      {
+        label: "Dashboards",
+        href: "/monitoring/dashboards",
+        icon: "dashboards",
+      },
+      {
+        label: "Prometheus",
+        href: "/monitoring/prometheus",
+        icon: "prometheus",
+      },
+    ],
+  },
+  {
     title: "Tools",
     items: [
       { label: "YAML Apply", href: "/tools/yaml-apply", icon: "yaml" },

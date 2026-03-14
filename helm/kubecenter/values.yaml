@@ -34,3 +34,33 @@ ingress:
   annotations: {}
   hosts: []
   tls: []
+
+monitoring:
+  deploy: false
+  namespace: ""              # Namespace hint for discovery (empty = search all)
+  prometheus:
+    url: ""                  # Override auto-discovery
+  grafana:
+    url: ""                  # Override auto-discovery
+    apiToken: ""             # Service account token for dashboard provisioning
+
+# Subchart overrides (only when monitoring.deploy=true)
+monitoring-stack:
+  alertmanager:
+    enabled: false           # KubeCenter handles alerting in Step 11
+  grafana:
+    enabled: true
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+    grafana.ini:
+      security:
+        allow_embedding: true
+      auth.proxy:
+        enabled: true
+        header_name: X-WEBAUTH-USER
+  kubeStateMetrics:
+    enabled: true
+  nodeExporter:
+    enabled: true

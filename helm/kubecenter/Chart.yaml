@@ -10,3 +10,9 @@ keywords:
   - dashboard
 maintainers:
   - name: KubeCenter
+dependencies:
+  - name: kube-prometheus-stack
+    version: "~82.10"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: monitoring.deploy
+    alias: monitoring-stack

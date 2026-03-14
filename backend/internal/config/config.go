@@ -13,12 +13,20 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig `koanf:"server"`
-	Log       LogConfig    `koanf:"log"`
-	Auth      AuthConfig   `koanf:"auth"`
-	Dev       bool         `koanf:"dev"`
-	ClusterID string       `koanf:"clusterid"`
-	CORS      CORSConfig   `koanf:"cors"`
+	Server     ServerConfig     `koanf:"server"`
+	Log        LogConfig        `koanf:"log"`
+	Auth       AuthConfig       `koanf:"auth"`
+	Monitoring MonitoringConfig `koanf:"monitoring"`
+	Dev        bool             `koanf:"dev"`
+	ClusterID  string           `koanf:"clusterid"`
+	CORS       CORSConfig       `koanf:"cors"`
+}
+
+type MonitoringConfig struct {
+	Namespace     string `koanf:"namespace"`     // Namespace hint for discovery (empty = search all)
+	PrometheusURL string `koanf:"prometheusurl"` // Override auto-discovery
+	GrafanaURL    string `koanf:"grafanaurl"`     // Override auto-discovery
+	GrafanaToken  string `koanf:"grafanatoken"`   // Grafana service account token
 }
 
 type AuthConfig struct {

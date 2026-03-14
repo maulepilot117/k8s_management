@@ -1,0 +1,19 @@
+{{- if .Values.monitoring.deploy }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubecenter.fullname" . }}-grafana-datasource
+  labels:
+    {{- include "kubecenter.labels" . | nindent 4 }}
+    grafana_datasource: "1"
+data:
+  kubecenter-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ include "kubecenter.fullname" . }}-monitoring-stack-prometheus:9090
+        isDefault: true
+        editable: false
+{{- end }}

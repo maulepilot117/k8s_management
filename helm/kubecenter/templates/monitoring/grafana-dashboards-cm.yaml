@@ -1,0 +1,23 @@
+{{- if .Values.monitoring.deploy }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubecenter.fullname" . }}-grafana-dashboards
+  labels:
+    {{- include "kubecenter.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  # Dashboard JSON files are embedded in the Go binary and provisioned via
+  # the Grafana HTTP API at startup. This ConfigMap is a fallback for
+  # environments using Grafana's sidecar dashboard provisioner.
+  kubecenter-cluster-overview.json: |
+    {}
+  kubecenter-pod-detail.json: |
+    {}
+  kubecenter-node-detail.json: |
+    {}
+  kubecenter-deployment-detail.json: |
+    {}
+  kubecenter-pvc-detail.json: |
+    {}
+{{- end }}
