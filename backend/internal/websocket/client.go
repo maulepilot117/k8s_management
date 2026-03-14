@@ -192,26 +192,29 @@ func (c *Client) handleSubscribe(msg IncomingMessage) {
 	// Normalize kind for informer matching (P1-069: e.g. "pvcs" → "persistentvolumeclaims")
 	normalizedKind := normalizeKind(msg.Kind)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	allowed, err := c.hub.accessChecker.CanAccess(
-		ctx,
-		c.user.KubernetesUsername,
-		c.user.KubernetesGroups,
-		"list",
-		normalizedKind,
-		msg.Namespace,
-	)
-	if err != nil {
-		c.logger.Error("RBAC check failed",
-			"error", err, "user", c.user.Username,
-			"kind", msg.Kind, "namespace", msg.Namespace)
-		c.sendError(msg.ID, 500, "RBAC check failed")
-		return
-	}
-	if !allowed {
-		c.sendError(msg.ID, 403, "subscription denied")
-		return
+	// Skip RBAC for kinds without a k8s resource counterpart (e.g. "alerts")
+	if !alwaysAllowKinds[normalizedKind] {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		allowed, err := c.hub.accessChecker.CanAccess(
+			ctx,
+			c.user.KubernetesUsername,
+			c.user.KubernetesGroups,
+			"list",
+			normalizedKind,
+			msg.Namespace,
+		)
+		if err != nil {
+			c.logger.Error("RBAC check failed",
+				"error", err, "user", c.user.Username,
+				"kind", msg.Kind, "namespace", msg.Namespace)
+			c.sendError(msg.ID, 500, "RBAC check failed")
+			return
+		}
+		if !allowed {
+			c.sendError(msg.ID, 403, "subscription denied")
+			return
+		}
 	}
 
 	key := subKey{Kind: normalizedKind, Namespace: msg.Namespace}
