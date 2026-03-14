@@ -233,20 +233,21 @@ func TestProcessWebhook_ResolvedAlert(t *testing.T) {
 
 func testHandler(t *testing.T) *Handler {
 	t.Helper()
-	return &Handler{
+	h := &Handler{
 		Store:        NewMemoryStore(),
 		AuditLogger:  audit.NewSlogLogger(slog.Default()),
 		Logger:       slog.Default(),
 		ClusterID:    "test",
 		WebhookToken: "test-token",
-		Enabled:      true,
-		Config: config.AlertingConfig{
-			Enabled:       true,
-			RetentionDays: 30,
-			RateLimit:     120,
-			SMTP:          config.SMTPConfig{Port: 587},
-		},
 	}
+	h.SetEnabled(true)
+	h.SetConfig(config.AlertingConfig{
+		Enabled:       true,
+		RetentionDays: 30,
+		RateLimit:     120,
+		SMTP:          config.SMTPConfig{Port: 587},
+	})
+	return h
 }
 
 func TestHandleWebhook_ValidPayload(t *testing.T) {
@@ -316,7 +317,7 @@ func TestHandleWebhook_MissingToken(t *testing.T) {
 
 func TestHandleWebhook_Disabled(t *testing.T) {
 	h := testHandler(t)
-	h.Enabled = false
+	h.SetEnabled(false)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts/webhook",
 		strings.NewReader(`{}`))
@@ -375,10 +376,34 @@ func TestHandleWebhook_MissingFingerprint(t *testing.T) {
 	}
 }
 
+func TestHandleWebhook_EmptyTokenConfig(t *testing.T) {
+	h := testHandler(t)
+	h.WebhookToken = "" // simulate unconfigured token
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts/webhook",
+		strings.NewReader(`{"version":"4","alerts":[{"status":"firing","labels":{"alertname":"Test"},"fingerprint":"fp1"}]}`))
+	req.Header.Set("Authorization", "Bearer ")
+	w := httptest.NewRecorder()
+
+	h.HandleWebhook(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 when webhook token is empty, got %d", w.Code)
+	}
+}
+
 func TestHandleGetSettings_MasksPassword(t *testing.T) {
 	h := testHandler(t)
-	h.Config.SMTP.Password = "secret-password"
-	h.Config.SMTP.Host = "smtp.example.com"
+	h.SetConfig(config.AlertingConfig{
+		Enabled:       true,
+		RetentionDays: 30,
+		RateLimit:     120,
+		SMTP: config.SMTPConfig{
+			Port:     587,
+			Host:     "smtp.example.com",
+			Password: "secret-password",
+		},
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/alerts/settings", nil)
 	// Simulate authenticated user context

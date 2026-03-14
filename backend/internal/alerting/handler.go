@@ -6,8 +6,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -29,18 +31,35 @@ type Handler struct {
 	Logger       *slog.Logger
 	ClusterID    string
 	WebhookToken string
-	Enabled      bool
+	enabled      atomic.Bool
 
-	ConfigMu sync.RWMutex
-	Config   config.AlertingConfig
+	configMu sync.RWMutex
+	config   config.AlertingConfig
+}
+
+// SetEnabled sets the alerting enabled state (thread-safe).
+func (h *Handler) SetEnabled(v bool) { h.enabled.Store(v) }
+
+// SetConfig sets the initial alerting config.
+func (h *Handler) SetConfig(cfg config.AlertingConfig) {
+	h.configMu.Lock()
+	defer h.configMu.Unlock()
+	h.config = cfg
 }
 
 // HandleWebhook receives Alertmanager webhook payloads.
 // POST /api/v1/alerts/webhook
 func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	if !h.Enabled {
+	if !h.enabled.Load() {
 		httputil.WriteError(w, http.StatusServiceUnavailable,
 			"alerting is disabled", "")
+		return
+	}
+
+	// Reject if no webhook token is configured (prevents empty-token bypass)
+	if h.WebhookToken == "" {
+		httputil.WriteError(w, http.StatusServiceUnavailable,
+			"webhook token not configured", "")
 		return
 	}
 
@@ -77,7 +96,7 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	for i, alert := range payload.Alerts {
 		if alert.Fingerprint == "" {
 			httputil.WriteError(w, http.StatusBadRequest,
-				"alert missing fingerprint", "alert index: "+string(rune('0'+i)))
+				"alert missing fingerprint", "alert index: "+strconv.Itoa(i))
 			return
 		}
 		if alert.Labels["alertname"] == "" {
@@ -351,9 +370,9 @@ func (h *Handler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.ConfigMu.RLock()
-	cfg := h.Config
-	h.ConfigMu.RUnlock()
+	h.configMu.RLock()
+	cfg := h.config
+	h.configMu.RUnlock()
 
 	// Mask SMTP password
 	maskedPassword := ""
@@ -409,33 +428,36 @@ func (h *Handler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.ConfigMu.Lock()
+	h.configMu.Lock()
 	// Preserve existing password if empty in request
 	if req.SMTP.Password == "" {
-		req.SMTP.Password = h.Config.SMTP.Password
+		req.SMTP.Password = h.config.SMTP.Password
 	}
 
-	h.Config.Enabled = req.Enabled
-	h.Config.SMTP.Host = req.SMTP.Host
+	h.config.Enabled = req.Enabled
+	h.config.SMTP.Host = req.SMTP.Host
 	if req.SMTP.Port > 0 {
-		h.Config.SMTP.Port = req.SMTP.Port
+		h.config.SMTP.Port = req.SMTP.Port
 	}
-	h.Config.SMTP.Username = req.SMTP.Username
-	h.Config.SMTP.Password = req.SMTP.Password
-	h.Config.SMTP.From = req.SMTP.From
-	h.Config.SMTP.TLSInsecure = req.SMTP.TLSInsecure
+	h.config.SMTP.Username = req.SMTP.Username
+	h.config.SMTP.Password = req.SMTP.Password
+	h.config.SMTP.From = req.SMTP.From
+	h.config.SMTP.TLSInsecure = req.SMTP.TLSInsecure
 	if req.RateLimit > 0 {
-		h.Config.RateLimit = req.RateLimit
+		h.config.RateLimit = req.RateLimit
 	}
 	if req.RetentionDays > 0 {
-		h.Config.RetentionDays = req.RetentionDays
+		h.config.RetentionDays = req.RetentionDays
 	}
-	h.Enabled = req.Enabled
-	h.ConfigMu.Unlock()
+	h.enabled.Store(req.Enabled)
+	// Capture SMTP config while lock is held for notifier update
+	smtpCfg := h.config.SMTP
+	smtpFrom := h.config.SMTP.From
+	h.configMu.Unlock()
 
-	// Update notifier config
+	// Update notifier config (using captured snapshot, not h.config)
 	if h.Notifier != nil {
-		h.Notifier.UpdateConfig(h.Config.SMTP, h.Config.SMTP.From)
+		h.Notifier.UpdateConfig(smtpCfg, smtpFrom)
 	}
 
 	h.AuditLogger.Log(r.Context(), audit.Entry{

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/smtp"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,12 +22,6 @@ var templateFS embed.FS
 
 var emailTemplates = template.Must(
 	template.New("").Funcs(template.FuncMap{
-		"upper": func(s string) string {
-			if len(s) == 0 {
-				return s
-			}
-			return string(s[0]-32) + s[1:]
-		},
 		"formatTime": func(t time.Time) string {
 			if t.IsZero() {
 				return "N/A"
@@ -73,10 +68,6 @@ type Notifier struct {
 	alertCooldown map[string]time.Time // fingerprint → last notified time
 	cooldownDuration time.Duration
 
-	// Digest tracking
-	digestMu     sync.Mutex
-	digestWindow []time.Time // timestamps of recent firing alerts
-	digestQueue  []*EmailMessage
 }
 
 // NewNotifier creates a new email notifier.
@@ -131,11 +122,6 @@ func (n *Notifier) QueueAlert(action AlertAction) bool {
 			"fingerprint", action.Alert.Fingerprint,
 		)
 		return false
-	}
-
-	// Check for digest condition (>5 firing alerts in 1 minute)
-	if action.Type == "new" && n.shouldDigest() {
-		return true // digest will be handled by the digest check
 	}
 
 	msg, err := n.renderAlert(action)
@@ -224,24 +210,6 @@ func (n *Notifier) checkGlobalRate() bool {
 	return true
 }
 
-func (n *Notifier) shouldDigest() bool {
-	n.digestMu.Lock()
-	defer n.digestMu.Unlock()
-
-	now := time.Now()
-	// Remove entries older than 1 minute
-	cutoff := now.Add(-time.Minute)
-	filtered := n.digestWindow[:0]
-	for _, t := range n.digestWindow {
-		if t.After(cutoff) {
-			filtered = append(filtered, t)
-		}
-	}
-	n.digestWindow = append(filtered, now)
-
-	return len(n.digestWindow) > 5
-}
-
 func (n *Notifier) renderAlert(action AlertAction) (*EmailMessage, error) {
 	var (
 		tmplName string
@@ -277,6 +245,10 @@ func (n *Notifier) renderAlert(action AlertAction) (*EmailMessage, error) {
 	if err := emailTemplates.ExecuteTemplate(&buf, tmplName, data); err != nil {
 		return nil, fmt.Errorf("rendering template %s: %w", tmplName, err)
 	}
+
+	// Sanitize CRLF to prevent SMTP header injection via alert labels
+	subject = strings.ReplaceAll(subject, "\r", "")
+	subject = strings.ReplaceAll(subject, "\n", "")
 
 	return &EmailMessage{
 		Subject: subject,

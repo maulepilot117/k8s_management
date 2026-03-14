@@ -163,9 +163,9 @@ func main() {
 		Logger:       logger,
 		ClusterID:    cfg.ClusterID,
 		WebhookToken: cfg.Alerting.WebhookToken,
-		Enabled:      cfg.Alerting.Enabled,
-		Config:       cfg.Alerting,
 	}
+	alertHandler.SetEnabled(cfg.Alerting.Enabled)
+	alertHandler.SetConfig(cfg.Alerting)
 
 	webhookRateLimiter := middleware.NewRateLimiterWithRate(300, time.Minute)
 	webhookRateLimiter.StartCleanup(ctx)

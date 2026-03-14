@@ -214,7 +214,7 @@ func (s *MemoryStore) Resolve(_ context.Context, fingerprint string, endsAt time
 	return nil
 }
 
-// Prune removes history entries older than the given time.
+// Prune removes history entries and stale active alerts older than the given time.
 func (s *MemoryStore) Prune(_ context.Context, olderThan time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -229,6 +229,16 @@ func (s *MemoryStore) Prune(_ context.Context, olderThan time.Time) (int, error)
 		kept = append(kept, event)
 	}
 	s.history = kept
+
+	// Also prune stale active alerts that were never resolved
+	// (e.g., Alertmanager restarted and never sent a resolved notification)
+	for fp, alert := range s.active {
+		if alert.ReceivedAt.Before(olderThan) {
+			delete(s.active, fp)
+			pruned++
+		}
+	}
+
 	return pruned, nil
 }
 
