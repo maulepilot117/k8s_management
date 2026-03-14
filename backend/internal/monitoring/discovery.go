@@ -164,14 +164,19 @@ func (d *Discoverer) Discover(ctx context.Context) {
 
 	var grafProxy http.Handler
 	var grafClient *GrafanaClient
-	if grafURL != "" && d.config.GrafanaToken != "" {
+	if grafURL != "" {
+		// Proxy is always created when Grafana is discovered — token is optional
+		// (it adds an Authorization header for Grafana instances that require auth)
 		proxy, err := newGrafanaProxy(grafURL, d.config.GrafanaToken)
 		if err != nil {
 			d.logger.Error("failed to create grafana proxy", "url", grafURL, "error", err)
 		} else {
 			grafProxy = proxy
 		}
-		grafClient = NewGrafanaClient(grafURL, d.config.GrafanaToken)
+		// API client for dashboard provisioning requires a token
+		if d.config.GrafanaToken != "" {
+			grafClient = NewGrafanaClient(grafURL, d.config.GrafanaToken)
+		}
 	}
 
 	// Provision dashboards if Grafana client is available
@@ -340,8 +345,10 @@ func newGrafanaProxy(grafanaURL, token string) (http.Handler, error) {
 			r.Out.URL.Path = path
 			r.Out.URL.RawQuery = r.In.URL.RawQuery
 
-			// Inject Grafana service account token
-			r.Out.Header.Set("Authorization", "Bearer "+token)
+			// Inject Grafana service account token (if configured)
+			if token != "" {
+				r.Out.Header.Set("Authorization", "Bearer "+token)
+			}
 			r.SetXForwarded()
 		},
 		ModifyResponse: func(resp *http.Response) error {
