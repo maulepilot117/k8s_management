@@ -53,28 +53,29 @@ type EmailMessage struct {
 
 // Notifier sends alert email notifications via SMTP.
 type Notifier struct {
-	configMu sync.RWMutex
-	config   config.SMTPConfig
-	from     string
+	configMu   sync.RWMutex
+	config     config.SMTPConfig
+	from       string
+	recipients []string
 
 	queue  chan *EmailMessage
 	logger *slog.Logger
 
 	// Rate limiting
-	rateMu       sync.Mutex
-	hourlyCount  int
-	hourlyReset  time.Time
-	hourlyLimit  int
-	alertCooldown map[string]time.Time // fingerprint → last notified time
+	rateMu           sync.Mutex
+	hourlyCount      int
+	hourlyReset      time.Time
+	hourlyLimit      int
+	alertCooldown    map[string]time.Time // fingerprint → last notified time
 	cooldownDuration time.Duration
-
 }
 
 // NewNotifier creates a new email notifier.
-func NewNotifier(cfg config.SMTPConfig, from string, rateLimit int, logger *slog.Logger) *Notifier {
+func NewNotifier(cfg config.SMTPConfig, from string, recipients []string, rateLimit int, logger *slog.Logger) *Notifier {
 	return &Notifier{
 		config:           cfg,
 		from:             from,
+		recipients:       recipients,
 		queue:            make(chan *EmailMessage, 100),
 		logger:           logger,
 		hourlyLimit:      rateLimit,
@@ -85,12 +86,15 @@ func NewNotifier(cfg config.SMTPConfig, from string, rateLimit int, logger *slog
 }
 
 // UpdateConfig updates the SMTP configuration at runtime.
-func (n *Notifier) UpdateConfig(cfg config.SMTPConfig, from string) {
+func (n *Notifier) UpdateConfig(cfg config.SMTPConfig, from string, recipients []string) {
 	n.configMu.Lock()
 	defer n.configMu.Unlock()
 	n.config = cfg
 	if from != "" {
 		n.from = from
+	}
+	if len(recipients) > 0 {
+		n.recipients = recipients
 	}
 }
 
@@ -165,8 +169,12 @@ func (n *Notifier) QueueTestEmail() error {
 	}
 }
 
-// Run processes the email queue. Call as `go notifier.Run(ctx)`.
+// Run processes the email queue and periodically cleans up expired cooldowns.
+// Call as `go notifier.Run(ctx)`.
 func (n *Notifier) Run(ctx context.Context) {
+	cleanupTicker := time.NewTicker(15 * time.Minute)
+	defer cleanupTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -176,6 +184,21 @@ func (n *Notifier) Run(ctx context.Context) {
 				n.logger.Error("failed to send email after retries",
 					"error", err, "subject", msg.Subject)
 			}
+		case <-cleanupTicker.C:
+			n.cleanupCooldowns()
+		}
+	}
+}
+
+// cleanupCooldowns removes expired entries from the alertCooldown map.
+func (n *Notifier) cleanupCooldowns() {
+	n.rateMu.Lock()
+	defer n.rateMu.Unlock()
+
+	now := time.Now()
+	for fp, lastNotify := range n.alertCooldown {
+		if now.Sub(lastNotify) >= n.cooldownDuration {
+			delete(n.alertCooldown, fp)
 		}
 	}
 }
@@ -284,10 +307,17 @@ func (n *Notifier) send(msg *EmailMessage) error {
 	n.configMu.RLock()
 	cfg := n.config
 	from := n.from
+	recipients := n.recipients
 	n.configMu.RUnlock()
 
 	if cfg.Host == "" {
 		return fmt.Errorf("SMTP host not configured")
+	}
+
+	// Determine recipients: configured list, or fall back to from address
+	rcpts := recipients
+	if len(rcpts) == 0 {
+		rcpts = []string{from}
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -295,6 +325,7 @@ func (n *Notifier) send(msg *EmailMessage) error {
 	// Build RFC 2822 message
 	var body bytes.Buffer
 	fmt.Fprintf(&body, "From: %s\r\n", from)
+	fmt.Fprintf(&body, "To: %s\r\n", strings.Join(rcpts, ", "))
 	fmt.Fprintf(&body, "Subject: %s\r\n", msg.Subject)
 	fmt.Fprintf(&body, "MIME-Version: 1.0\r\n")
 	fmt.Fprintf(&body, "Content-Type: text/html; charset=UTF-8\r\n")
@@ -303,14 +334,14 @@ func (n *Notifier) send(msg *EmailMessage) error {
 
 	// Port 465 uses implicit TLS
 	if cfg.Port == 465 {
-		return n.sendImplicitTLS(cfg, from, addr, body.Bytes())
+		return n.sendImplicitTLS(cfg, from, rcpts, addr, body.Bytes())
 	}
 
 	// Port 587 (or other) uses STARTTLS
-	return n.sendSTARTTLS(cfg, from, addr, body.Bytes())
+	return n.sendSTARTTLS(cfg, from, rcpts, addr, body.Bytes())
 }
 
-func (n *Notifier) sendSTARTTLS(cfg config.SMTPConfig, from, addr string, msg []byte) error {
+func (n *Notifier) sendSTARTTLS(cfg config.SMTPConfig, from string, rcpts []string, addr string, msg []byte) error {
 	c, err := smtp.Dial(addr)
 	if err != nil {
 		return fmt.Errorf("smtp dial: %w", err)
@@ -341,10 +372,10 @@ func (n *Notifier) sendSTARTTLS(cfg config.SMTPConfig, from, addr string, msg []
 	if err := c.Mail(from); err != nil {
 		return fmt.Errorf("smtp mail: %w", err)
 	}
-	// Send to the configured from address as a default recipient
-	// In a future iteration, recipients would be configurable
-	if err := c.Rcpt(from); err != nil {
-		return fmt.Errorf("smtp rcpt: %w", err)
+	for _, rcpt := range rcpts {
+		if err := c.Rcpt(rcpt); err != nil {
+			return fmt.Errorf("smtp rcpt %s: %w", rcpt, err)
+		}
 	}
 
 	w, err := c.Data()
@@ -361,7 +392,7 @@ func (n *Notifier) sendSTARTTLS(cfg config.SMTPConfig, from, addr string, msg []
 	return c.Quit()
 }
 
-func (n *Notifier) sendImplicitTLS(cfg config.SMTPConfig, from, addr string, msg []byte) error {
+func (n *Notifier) sendImplicitTLS(cfg config.SMTPConfig, from string, rcpts []string, addr string, msg []byte) error {
 	tlsConfig := &tls.Config{
 		ServerName:         cfg.Host,
 		InsecureSkipVerify: cfg.TLSInsecure,
@@ -388,8 +419,10 @@ func (n *Notifier) sendImplicitTLS(cfg config.SMTPConfig, from, addr string, msg
 	if err := c.Mail(from); err != nil {
 		return fmt.Errorf("smtp mail: %w", err)
 	}
-	if err := c.Rcpt(from); err != nil {
-		return fmt.Errorf("smtp rcpt: %w", err)
+	for _, rcpt := range rcpts {
+		if err := c.Rcpt(rcpt); err != nil {
+			return fmt.Errorf("smtp rcpt %s: %w", rcpt, err)
+		}
 	}
 
 	w, err := c.Data()

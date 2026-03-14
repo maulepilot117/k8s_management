@@ -57,6 +57,7 @@ type AlertingConfig struct {
 	WebhookToken  string     `koanf:"webhooktoken"`
 	RetentionDays int        `koanf:"retentiondays"`
 	RateLimit     int        `koanf:"ratelimit"` // max emails per hour
+	Recipients    []string   `koanf:"recipients"`
 	SMTP          SMTPConfig `koanf:"smtp"`
 }
 

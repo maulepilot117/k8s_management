@@ -88,7 +88,9 @@ func (s *MemoryStore) Record(_ context.Context, event AlertEvent) error {
 
 	// Evict oldest if over cap
 	if len(s.history) > maxHistoryEntries {
-		s.history = s.history[len(s.history)-maxHistoryEntries:]
+		trimmed := make([]AlertEvent, maxHistoryEntries)
+		copy(trimmed, s.history[len(s.history)-maxHistoryEntries:])
+		s.history = trimmed
 	}
 
 	return nil
@@ -208,7 +210,9 @@ func (s *MemoryStore) Resolve(_ context.Context, fingerprint string, endsAt time
 	// Add resolved event to history
 	s.history = append(s.history, resolved)
 	if len(s.history) > maxHistoryEntries {
-		s.history = s.history[len(s.history)-maxHistoryEntries:]
+		trimmed := make([]AlertEvent, maxHistoryEntries)
+		copy(trimmed, s.history[len(s.history)-maxHistoryEntries:])
+		s.history = trimmed
 	}
 
 	return nil

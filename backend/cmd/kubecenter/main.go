@@ -148,7 +148,7 @@ func main() {
 
 	var alertNotifier *alerting.Notifier
 	if cfg.Alerting.SMTP.Host != "" {
-		alertNotifier = alerting.NewNotifier(cfg.Alerting.SMTP, cfg.Alerting.SMTP.From, cfg.Alerting.RateLimit, logger)
+		alertNotifier = alerting.NewNotifier(cfg.Alerting.SMTP, cfg.Alerting.SMTP.From, cfg.Alerting.Recipients, cfg.Alerting.RateLimit, logger)
 		go alertNotifier.Run(ctx)
 	}
 

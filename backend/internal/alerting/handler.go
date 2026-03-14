@@ -17,6 +17,7 @@ import (
 	"github.com/kubecenter/kubecenter/internal/config"
 	"github.com/kubecenter/kubecenter/internal/httputil"
 	"github.com/kubecenter/kubecenter/internal/websocket"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const maxWebhookBody = 1 << 20 // 1MB
@@ -171,10 +172,8 @@ func (h *Handler) HandleListHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if v := q.Get("limit"); v != "" {
-		var limit int
-		if _, err := parsePositiveInt(v); err == nil {
-			limit = parseIntOrDefault(v, 50)
-			opts.Limit = limit
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			opts.Limit = n
 		}
 	}
 
@@ -216,7 +215,7 @@ func (h *Handler) HandleListRules(w http.ResponseWriter, r *http.Request) {
 
 	rules, err := h.Rules.List(r.Context(), user.KubernetesUsername, user.KubernetesGroups, namespace)
 	if err != nil {
-		httputil.WriteError(w, http.StatusBadGateway, "failed to list alert rules", err.Error())
+		writeK8sError(w, err, "list alert rules")
 		return
 	}
 
@@ -236,7 +235,7 @@ func (h *Handler) HandleGetRule(w http.ResponseWriter, r *http.Request) {
 
 	rule, err := h.Rules.Get(r.Context(), user.KubernetesUsername, user.KubernetesGroups, namespace, name)
 	if err != nil {
-		httputil.WriteError(w, http.StatusBadGateway, "failed to get alert rule", err.Error())
+		writeK8sError(w, err, "get alert rule")
 		return
 	}
 
@@ -271,7 +270,7 @@ func (h *Handler) HandleCreateRule(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.Rules.Create(r.Context(), user.KubernetesUsername, user.KubernetesGroups, body.Namespace, body.Content)
 	if err != nil {
-		httputil.WriteError(w, http.StatusBadGateway, "failed to create alert rule", err.Error())
+		writeK8sError(w, err, "create alert rule")
 		return
 	}
 
@@ -309,7 +308,7 @@ func (h *Handler) HandleUpdateRule(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.Rules.Update(r.Context(), user.KubernetesUsername, user.KubernetesGroups, namespace, name, content)
 	if err != nil {
-		httputil.WriteError(w, http.StatusBadGateway, "failed to update alert rule", err.Error())
+		writeK8sError(w, err, "update alert rule")
 		return
 	}
 
@@ -344,7 +343,7 @@ func (h *Handler) HandleDeleteRule(w http.ResponseWriter, r *http.Request) {
 			httputil.WriteError(w, http.StatusForbidden, err.Error(), "")
 			return
 		}
-		httputil.WriteError(w, http.StatusBadGateway, "failed to delete alert rule", err.Error())
+		writeK8sError(w, err, "delete alert rule")
 		return
 	}
 
@@ -386,10 +385,11 @@ func (h *Handler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteData(w, map[string]any{
-		"enabled":      cfg.Enabled,
-		"webhookToken": maskedToken,
+		"enabled":       cfg.Enabled,
+		"webhookToken":  maskedToken,
 		"retentionDays": cfg.RetentionDays,
-		"rateLimit":    cfg.RateLimit,
+		"rateLimit":     cfg.RateLimit,
+		"recipients":    cfg.Recipients,
 		"smtp": map[string]any{
 			"host":        cfg.SMTP.Host,
 			"port":        cfg.SMTP.Port,
@@ -418,9 +418,10 @@ func (h *Handler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			From        string `json:"from"`
 			TLSInsecure bool   `json:"tlsInsecure"`
 		} `json:"smtp"`
-		RateLimit     int  `json:"rateLimit"`
-		RetentionDays int  `json:"retentionDays"`
-		Enabled       bool `json:"enabled"`
+		Recipients    []string `json:"recipients"`
+		RateLimit     int      `json:"rateLimit"`
+		RetentionDays int      `json:"retentionDays"`
+		Enabled       bool     `json:"enabled"`
 	}
 
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxWebhookBody)).Decode(&req); err != nil {
@@ -449,15 +450,19 @@ func (h *Handler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if req.RetentionDays > 0 {
 		h.config.RetentionDays = req.RetentionDays
 	}
+	if len(req.Recipients) > 0 {
+		h.config.Recipients = req.Recipients
+	}
 	h.enabled.Store(req.Enabled)
-	// Capture SMTP config while lock is held for notifier update
+	// Capture config while lock is held for notifier update
 	smtpCfg := h.config.SMTP
 	smtpFrom := h.config.SMTP.From
+	rcpts := h.config.Recipients
 	h.configMu.Unlock()
 
 	// Update notifier config (using captured snapshot, not h.config)
 	if h.Notifier != nil {
-		h.Notifier.UpdateConfig(smtpCfg, smtpFrom)
+		h.Notifier.UpdateConfig(smtpCfg, smtpFrom, rcpts)
 	}
 
 	h.AuditLogger.Log(r.Context(), audit.Entry{
@@ -527,21 +532,17 @@ func getName(content map[string]interface{}) string {
 	return ""
 }
 
-func parsePositiveInt(s string) (int, error) {
-	var n int
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, io.ErrUnexpectedEOF
-		}
-		n = n*10 + int(c-'0')
-	}
-	return n, nil
-}
 
-func parseIntOrDefault(s string, def int) int {
-	n, err := parsePositiveInt(s)
-	if err != nil || n <= 0 {
-		return def
+// writeK8sError maps a Kubernetes API error to the appropriate HTTP status code.
+func writeK8sError(w http.ResponseWriter, err error, action string) {
+	switch {
+	case apierrors.IsNotFound(err):
+		httputil.WriteError(w, http.StatusNotFound, "resource not found", err.Error())
+	case apierrors.IsForbidden(err):
+		httputil.WriteError(w, http.StatusForbidden, "permission denied", err.Error())
+	case apierrors.IsAlreadyExists(err):
+		httputil.WriteError(w, http.StatusConflict, "resource already exists", err.Error())
+	default:
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to "+action, err.Error())
 	}
-	return n
 }

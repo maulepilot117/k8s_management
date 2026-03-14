@@ -1,7 +1,7 @@
 import { define } from "@/utils.ts";
 import AlertSettings from "@/islands/AlertSettings.tsx";
 
-export default define.page(function AlertSettingsRoute() {
+export default define.page(function AlertSettingsPage() {
   return (
     <div class="space-y-6">
       <div>

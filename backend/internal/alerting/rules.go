@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"regexp"
 	"sync"
+	"sync/atomic"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -37,8 +38,9 @@ type K8sClientFactory interface {
 type RulesManager struct {
 	clientFactory K8sClientFactory
 	logger        *slog.Logger
-	available     bool
-	checkOnce     sync.Once
+	available     atomic.Bool
+	checked       atomic.Bool
+	checkMu       sync.Mutex
 }
 
 // NewRulesManager creates a new rules manager.
@@ -50,22 +52,37 @@ func NewRulesManager(clientFactory K8sClientFactory, logger *slog.Logger) *Rules
 }
 
 // Available returns whether the PrometheusRule CRD is installed in the cluster.
+// Re-checks periodically until found (handles CRD installed after startup).
 func (rm *RulesManager) Available() bool {
-	rm.checkOnce.Do(func() {
-		resources, err := rm.clientFactory.DiscoveryClient().ServerResourcesForGroupVersion("monitoring.coreos.com/v1")
-		if err != nil {
+	if rm.available.Load() {
+		return true
+	}
+
+	// Only re-check if not already confirmed available
+	rm.checkMu.Lock()
+	defer rm.checkMu.Unlock()
+
+	// Double-check after acquiring lock
+	if rm.available.Load() {
+		return true
+	}
+
+	resources, err := rm.clientFactory.DiscoveryClient().ServerResourcesForGroupVersion("monitoring.coreos.com/v1")
+	if err != nil {
+		if !rm.checked.Load() {
 			rm.logger.Debug("PrometheusRule CRD not available", "error", err)
-			return
+			rm.checked.Store(true)
 		}
-		for _, r := range resources.APIResources {
-			if r.Kind == "PrometheusRule" {
-				rm.available = true
-				rm.logger.Info("PrometheusRule CRD available")
-				return
-			}
+		return false
+	}
+	for _, r := range resources.APIResources {
+		if r.Kind == "PrometheusRule" {
+			rm.available.Store(true)
+			rm.logger.Info("PrometheusRule CRD available")
+			return true
 		}
-	})
-	return rm.available
+	}
+	return false
 }
 
 // RuleSummary is a lightweight view of a PrometheusRule for listing.

@@ -1,7 +1,7 @@
 import { define } from "@/utils.ts";
-import AlertRulesPage from "@/islands/AlertRulesPage.tsx";
+import AlertRulesIsland from "@/islands/AlertRulesPage.tsx";
 
-export default define.page(function AlertRulesRoute() {
+export default define.page(function AlertRulesPage() {
   return (
     <div class="space-y-6">
       <div>
@@ -12,7 +12,7 @@ export default define.page(function AlertRulesRoute() {
           Manage PrometheusRule CRDs
         </p>
       </div>
-      <AlertRulesPage />
+      <AlertRulesIsland />
     </div>
   );
 });

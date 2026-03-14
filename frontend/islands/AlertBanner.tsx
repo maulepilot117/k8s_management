@@ -12,7 +12,6 @@ interface AlertEvent {
 export default function AlertBanner() {
   const alerts = useSignal<AlertEvent[]>([]);
   const dismissed = useSignal(false);
-  const resolvedMessage = useSignal<string | null>(null);
 
   function fetchAlerts() {
     apiGet<AlertEvent[]>("/v1/alerts")
@@ -34,14 +33,6 @@ export default function AlertBanner() {
   }, []);
 
   if (!IS_BROWSER || dismissed.value || alerts.value.length === 0) {
-    // Show resolved message briefly
-    if (resolvedMessage.value) {
-      return (
-        <div class="bg-green-50 dark:bg-green-900/20 border-b border-green-200 dark:border-green-800 px-4 py-2 text-sm text-green-700 dark:text-green-400 text-center">
-          {resolvedMessage.value}
-        </div>
-      );
-    }
     return null;
   }
 
