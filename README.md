@@ -12,7 +12,7 @@ A web-based Kubernetes management platform that delivers vCenter-level functiona
 - **RBAC-aware multi-tenancy** with user impersonation (OIDC, LDAP, local accounts)
 - **Full YAML escape hatch** with Monaco editor, validation, diff, and server-side apply
 - **Pod management** including logs, exec terminal, and resource metrics *(planned)*
-- **Alerting** via Alertmanager with email notifications *(planned)*
+- **Alerting** via Alertmanager webhook receiver with SMTP email notifications, PrometheusRule CRD management, and real-time alert banner
 - **Audit logging** for all write operations and secret access
 - **Multi-cluster ready** architecture (single-cluster in Phase 1)
 
@@ -189,7 +189,23 @@ WebSocket:
 
 | Endpoint | Auth | Description |
 |---|---|---|
-| `WS /api/v1/ws/resources` | JWT (first message) | Subscribe to real-time resource events |
+| `WS /api/v1/ws/resources` | JWT (first message) | Subscribe to real-time resource events (incl. kind "alerts") |
+
+Alerting:
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/v1/alerts/webhook` | Bearer token | Alertmanager webhook receiver |
+| GET | `/api/v1/alerts` | Yes | List active (firing) alerts |
+| GET | `/api/v1/alerts/history` | Yes | Paginated alert history |
+| GET | `/api/v1/alerts/rules` | Yes | List PrometheusRule CRDs |
+| GET | `/api/v1/alerts/rules/:ns/:name` | Yes | Get single PrometheusRule |
+| POST | `/api/v1/alerts/rules` | Yes | Create PrometheusRule |
+| PUT | `/api/v1/alerts/rules/:ns/:name` | Yes | Update PrometheusRule (SSA) |
+| DELETE | `/api/v1/alerts/rules/:ns/:name` | Yes | Delete PrometheusRule |
+| GET | `/api/v1/alerts/settings` | Yes | Get alerting config (password masked) |
+| PUT | `/api/v1/alerts/settings` | Yes | Update alerting config (in-memory) |
+| POST | `/api/v1/alerts/test` | Yes | Send test email |
 
 See [CLAUDE.md](CLAUDE.md) for the complete API reference.
 
@@ -225,11 +241,12 @@ kubecenter/
 │   │   ├── monitoring/   # Prometheus/Grafana discovery, proxy, dashboards
 │   │   ├── storage/      # CSI drivers, StorageClasses, VolumeSnapshots
 │   │   ├── networking/   # CNI detection (Cilium/Calico/Flannel), config management
+│   │   ├── alerting/     # Alertmanager webhook, alert store, SMTP notifier, PrometheusRule CRUD
 │   │   └── config/       # App configuration
 │   └── pkg/              # Public packages (api types, version)
 ├── frontend/             # Deno 2.x + Fresh 2.x frontend
 │   ├── routes/           # Pages, layout, middleware, BFF proxy
-│   ├── islands/          # Interactive components (Dashboard, Login, ResourceTable, ResourceDetail, YamlEditor, Monitoring, Storage, CNI)
+│   ├── islands/          # Interactive components (Dashboard, Login, ResourceTable, ResourceDetail, YamlEditor, Monitoring, Storage, CNI, Alerting)
 │   ├── components/       # Server-rendered UI components
 │   └── lib/              # API client, auth state, types, constants
 ├── helm/kubecenter/      # Helm chart
