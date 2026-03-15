@@ -167,7 +167,12 @@ func main() {
 	} else {
 		auditLogger = audit.NewSlogLogger(logger)
 	}
-	rateLimiter := middleware.NewRateLimiter()
+	var rateLimiter *middleware.RateLimiter
+	if cfg.Dev {
+		rateLimiter = middleware.NewRateLimiterWithRate(60, time.Minute) // relaxed for dev
+	} else {
+		rateLimiter = middleware.NewRateLimiter() // 5 req/min for production
+	}
 	rateLimiter.StartCleanup(ctx)
 	yamlRateLimiter := middleware.NewRateLimiterWithRate(30, time.Minute)
 	yamlRateLimiter.StartCleanup(ctx)
