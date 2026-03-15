@@ -137,7 +137,7 @@ func main() {
 	// Initialize database and audit logger
 	var auditLogger audit.Logger
 	if cfg.Database.URL != "" {
-		db, err := appstore.New(ctx, cfg.Database.URL, logger)
+		db, err := appstore.New(ctx, cfg.Database.URL, int32(cfg.Database.MaxConns), int32(cfg.Database.MinConns), logger)
 		if err != nil {
 			logger.Error("failed to connect to database, falling back to slog audit", "error", err)
 			auditLogger = audit.NewSlogLogger(logger)

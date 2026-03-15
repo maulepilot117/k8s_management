@@ -27,7 +27,10 @@ func (db *DB) migrate(connString string) error {
 	}
 
 	version, dirty, _ := m.Version()
-	db.logger.Info("database migrations applied", "version", version, "dirty", dirty)
+	if dirty {
+		return fmt.Errorf("database schema is in dirty state at version %d — manual intervention required (run migrate force)", version)
+	}
+	db.logger.Info("database migrations applied", "version", version)
 
 	return nil
 }

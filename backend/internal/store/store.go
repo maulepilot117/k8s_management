@@ -24,17 +24,22 @@ type DB struct {
 // New creates a new database connection pool and runs migrations.
 // The connString should be a PostgreSQL connection URL:
 // postgresql://user:pass@host:5432/dbname?sslmode=require
-func New(ctx context.Context, connString string, logger *slog.Logger) (*DB, error) {
+// maxConns/minConns of 0 use defaults (10/2).
+func New(ctx context.Context, connString string, maxConns, minConns int32, logger *slog.Logger) (*DB, error) {
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, fmt.Errorf("parsing database URL: %w", err)
 	}
 
-	// Apply pool defaults (can be overridden via connection string params)
-	if config.MaxConns == 0 {
+	// Apply pool sizing from config (overrides connection string defaults)
+	if maxConns > 0 {
+		config.MaxConns = maxConns
+	} else if config.MaxConns < 10 {
 		config.MaxConns = 10
 	}
-	if config.MinConns == 0 {
+	if minConns > 0 {
+		config.MinConns = minConns
+	} else if config.MinConns < 2 {
 		config.MinConns = 2
 	}
 
