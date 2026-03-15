@@ -28,6 +28,14 @@ export interface UserInfo {
   roles: string[];
 }
 
+/** Auth provider info from /auth/providers — matches backend auth.ProviderInfo. */
+export interface ProviderInfo {
+  id: string;
+  type: string;
+  displayName: string;
+  loginURL?: string;
+}
+
 // ---- Kubernetes resource types (matches client-go JSON serialization) ----
 
 /** Common k8s ObjectMeta fields returned by the backend. */

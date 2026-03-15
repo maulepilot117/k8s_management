@@ -14,12 +14,12 @@ func TestSessionStore_StoreAndValidate(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Hour),
 	})
 
-	userID, err := store.Validate("token-abc")
+	result, err := store.Validate("token-abc")
 	if err != nil {
 		t.Fatalf("Validate failed: %v", err)
 	}
-	if userID != "user-1" {
-		t.Errorf("expected user-1, got %s", userID)
+	if result.UserID != "user-1" {
+		t.Errorf("expected user-1, got %s", result.UserID)
 	}
 }
 
@@ -86,3 +86,33 @@ func TestSessionStore_Revoke(t *testing.T) {
 	}
 }
 
+func TestSessionStore_CachedUser(t *testing.T) {
+	store := NewSessionStore()
+
+	cachedUser := &User{
+		ID:                 "oidc:google:sub-123",
+		Username:           "alice@example.com",
+		Provider:           "oidc",
+		KubernetesUsername: "alice@example.com",
+		KubernetesGroups:   []string{"k8scenter:users", "oidc:devs"},
+	}
+
+	store.Store(RefreshSession{
+		Token:      "oidc-token",
+		UserID:     "oidc:google:sub-123",
+		Provider:   "oidc",
+		ExpiresAt:  time.Now().Add(time.Hour),
+		CachedUser: cachedUser,
+	})
+
+	result, err := store.Validate("oidc-token")
+	if err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+	if result.CachedUser == nil {
+		t.Fatal("expected CachedUser to be non-nil for OIDC session")
+	}
+	if result.CachedUser.Username != "alice@example.com" {
+		t.Errorf("CachedUser.Username = %q, want %q", result.CachedUser.Username, "alice@example.com")
+	}
+}

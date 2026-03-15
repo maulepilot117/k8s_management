@@ -56,12 +56,19 @@ func (s *Server) issueTokenPair(w http.ResponseWriter, user *auth.User) (string,
 		return "", err
 	}
 
-	s.Sessions.Store(auth.RefreshSession{
+	session := auth.RefreshSession{
 		Token:     refreshToken,
 		UserID:    user.ID,
 		Provider:  user.Provider,
 		ExpiresAt: time.Now().Add(auth.RefreshTokenLifetime),
-	})
+	}
+	// Cache user data for non-local providers (OIDC has no local store,
+	// LDAP would require reconnecting to the directory on refresh).
+	// Local users are looked up by ID from the in-memory store instead.
+	if user.Provider != "local" {
+		session.CachedUser = user
+	}
+	s.Sessions.Store(session)
 
 	s.setRefreshCookie(w, refreshToken, int(auth.RefreshTokenLifetime.Seconds()))
 

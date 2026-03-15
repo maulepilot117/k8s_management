@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/kubecenter/kubecenter/internal/audit"
 	"github.com/kubecenter/kubecenter/internal/auth"
 	"github.com/kubecenter/kubecenter/pkg/api"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
-// handleLogin authenticates a user and returns a JWT access token.
+// handleLogin authenticates a user via credential-based providers (local, LDAP).
+// The optional "provider" field in the request body selects which provider to use (default: "local").
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodySize)
 
@@ -36,10 +38,24 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.LocalAuth.Authenticate(r.Context(), creds)
+	// Select provider (default: "local")
+	providerID := creds.Provider
+	if providerID == "" {
+		providerID = "local"
+	}
+
+	provider, ok := s.AuthRegistry.GetCredential(providerID)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, api.Response{
+			Error: &api.APIError{Code: 400, Message: "unknown auth provider"},
+		})
+		return
+	}
+
+	user, err := provider.Authenticate(r.Context(), creds)
 	if err != nil {
 		entry := s.newAuditEntry(r, creds.Username, audit.ActionLogin, audit.ResultFailure)
-		entry.Detail = "invalid credentials"
+		entry.Detail = "invalid credentials (provider: " + providerID + ")"
 		s.AuditLogger.Log(r.Context(), entry)
 		writeJSON(w, http.StatusUnauthorized, api.Response{
 			Error: &api.APIError{Code: 401, Message: "invalid credentials"},
@@ -68,6 +84,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleRefresh exchanges a valid refresh token for a new access token.
 // Implements refresh token rotation — the old token is invalidated.
+// Works across all provider types (local, OIDC, LDAP).
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
 	if err != nil {
@@ -77,7 +94,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := s.Sessions.Validate(cookie.Value)
+	session, err := s.Sessions.Validate(cookie.Value)
 	if err != nil {
 		entry := s.newAuditEntry(r, "", audit.ActionRefresh, audit.ResultFailure)
 		entry.Detail = "invalid or expired refresh token"
@@ -88,12 +105,19 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.LocalAuth.GetUserByID(userID)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, api.Response{
-			Error: &api.APIError{Code: 401, Message: "user not found"},
-		})
-		return
+	// For OIDC users, use the cached user data from the session (no local store).
+	// For local/LDAP users, look up by ID from the provider registry.
+	var user *auth.User
+	if session.CachedUser != nil {
+		user = session.CachedUser
+	} else {
+		user, err = s.AuthRegistry.GetUserByID(session.Provider, session.UserID)
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, api.Response{
+				Error: &api.APIError{Code: 401, Message: "user not found"},
+			})
+			return
+		}
 	}
 
 	accessToken, err := s.issueTokenPair(w, user)
@@ -134,10 +158,119 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleAuthProviders returns the list of configured auth providers.
 func (s *Server) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
-	providers := []map[string]string{
-		{"type": "local", "name": "Local Accounts"},
+	writeJSON(w, http.StatusOK, api.Response{Data: s.AuthRegistry.ListProviders()})
+}
+
+// handleOIDCLogin initiates an OIDC authorization flow by redirecting to the provider.
+func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
+	providerID := chi.URLParam(r, "providerID")
+
+	provider, ok := s.AuthRegistry.GetOIDC(providerID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, api.Response{
+			Error: &api.APIError{Code: 404, Message: "unknown OIDC provider"},
+		})
+		return
 	}
-	writeJSON(w, http.StatusOK, api.Response{Data: providers})
+
+	redirectURL, err := provider.LoginRedirect()
+	if err != nil {
+		s.Logger.Error("failed to generate OIDC login redirect", "error", err, "provider", providerID)
+		writeJSON(w, http.StatusInternalServerError, api.Response{
+			Error: &api.APIError{Code: 500, Message: "failed to initiate login"},
+		})
+		return
+	}
+
+	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+// handleOIDCCallback handles the OIDC authorization code callback.
+// It exchanges the code for tokens, verifies the ID token, maps claims,
+// issues a k8sCenter JWT, and redirects to the frontend.
+func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
+	providerID := chi.URLParam(r, "providerID")
+
+	// Check for OIDC error response
+	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
+		desc := r.URL.Query().Get("error_description")
+		s.Logger.Warn("OIDC callback error", "provider", providerID, "error", errMsg, "description", desc)
+		entry := s.newAuditEntry(r, "", audit.ActionLogin, audit.ResultFailure)
+		entry.Detail = "OIDC error: " + errMsg
+		s.AuditLogger.Log(r.Context(), entry)
+		// Redirect to login with error
+		http.Redirect(w, r, "/login?error=oidc_failed", http.StatusFound)
+		return
+	}
+
+	stateParam := r.URL.Query().Get("state")
+	code := r.URL.Query().Get("code")
+
+	if stateParam == "" || code == "" {
+		http.Redirect(w, r, "/login?error=invalid_request", http.StatusFound)
+		return
+	}
+
+	// Consume flow state (validates and deletes — single use)
+	flowState, err := s.OIDCStateStore.Consume(stateParam)
+	if err != nil {
+		entry := s.newAuditEntry(r, "", audit.ActionLogin, audit.ResultFailure)
+		entry.Detail = "OIDC state validation failed"
+		s.AuditLogger.Log(r.Context(), entry)
+		http.Redirect(w, r, "/login?error=invalid_state", http.StatusFound)
+		return
+	}
+
+	// Verify the provider matches
+	if flowState.ProviderID != providerID {
+		entry := s.newAuditEntry(r, "", audit.ActionLogin, audit.ResultFailure)
+		entry.Detail = "OIDC provider mismatch"
+		s.AuditLogger.Log(r.Context(), entry)
+		http.Redirect(w, r, "/login?error=provider_mismatch", http.StatusFound)
+		return
+	}
+
+	provider, ok := s.AuthRegistry.GetOIDC(providerID)
+	if !ok {
+		http.Redirect(w, r, "/login?error=unknown_provider", http.StatusFound)
+		return
+	}
+
+	user, err := provider.HandleCallback(r.Context(), code, flowState)
+	if err != nil {
+		s.Logger.Error("OIDC callback failed", "error", err, "provider", providerID)
+		entry := s.newAuditEntry(r, "", audit.ActionLogin, audit.ResultFailure)
+		entry.Detail = "OIDC authentication failed"
+		s.AuditLogger.Log(r.Context(), entry)
+		http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+		return
+	}
+
+	// Issue k8sCenter JWT + refresh cookie
+	accessToken, err := s.issueTokenPair(w, user)
+	if err != nil {
+		s.Logger.Error("failed to issue tokens after OIDC callback", "error", err)
+		http.Redirect(w, r, "/login?error=token_failed", http.StatusFound)
+		return
+	}
+
+	s.AuditLogger.Log(r.Context(), s.newAuditEntry(r, user.Username, audit.ActionLogin, audit.ResultSuccess))
+
+	// Set the access token in a short-lived httpOnly cookie for the frontend to pick up.
+	// The frontend callback page reads this cookie via a BFF endpoint, stores the token
+	// in memory, and clears the cookie. This avoids exposing the token in URL fragments.
+	http.SetCookie(w, &http.Cookie{
+		Name:     "oidc_access_token",
+		Value:    accessToken,
+		Path:     "/api/auth/oidc-token-exchange",
+		HttpOnly: true,
+		Secure:   !s.Config.Dev,
+		SameSite: http.SameSiteLaxMode, // Lax to allow cross-origin OIDC redirect
+		MaxAge:   60,                   // 60 seconds — just long enough for the redirect
+	})
+
+	// Redirect to the frontend OIDC callback page
+	http.Redirect(w, r, "/auth/callback", http.StatusFound)
 }
 
 // handleAuthMe returns the authenticated user's info and RBAC summary.

@@ -152,7 +152,7 @@ func (p *LocalProvider) createUser(username, password string, roles []string, re
 		PasswordHash:       hex.EncodeToString(hash),
 		Salt:               hex.EncodeToString(salt),
 		KubernetesUsername: username,
-		KubernetesGroups:   []string{"kubecenter:users"},
+		KubernetesGroups:   []string{"k8scenter:users"},
 		Roles:              roles,
 	}
 
