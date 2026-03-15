@@ -89,6 +89,9 @@ func (s *Server) registerRoutes() {
 				s.registerAlertingRoutes(ar)
 			}
 
+			// Audit log route — admin only
+			ar.With(middleware.RequireAdmin).Get("/audit/logs", s.handleAuditLogs)
+
 			// Auth settings routes — admin only (prevents SSRF via test endpoints)
 			ar.Route("/settings/auth", func(sr chi.Router) {
 				sr.Use(middleware.RequireAdmin)

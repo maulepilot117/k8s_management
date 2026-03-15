@@ -11,6 +11,9 @@ const (
 	DefaultClusterID       = "local"
 	DefaultDevMode         = false
 
+	// Audit defaults
+	DefaultAuditRetentionDays = 90
+
 	// Alerting defaults
 	DefaultAlertingEnabled       = false
 	DefaultAlertingRetentionDays = 30
