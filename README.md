@@ -128,6 +128,8 @@ Key endpoints:
 | POST | `/api/v1/auth/logout` | No | Invalidate refresh token |
 | GET | `/api/v1/auth/providers` | No | List configured auth providers |
 | GET | `/api/v1/auth/me` | Yes | Current user info + RBAC summary |
+| GET | `/api/v1/auth/oidc/:id/login` | No | Initiate OIDC login (redirects to provider) |
+| GET | `/api/v1/auth/oidc/:id/callback` | No | OIDC callback (exchanges code, issues JWT) |
 | GET | `/api/v1/cluster/info` | Yes | Cluster version, node count, k8sCenter version |
 
 Resource CRUD (18 types: deployments, statefulsets, daemonsets, pods, services, ingresses, configmaps, secrets, namespaces, nodes, pvcs, jobs, cronjobs, networkpolicies, roles, clusterroles, rolebindings, clusterrolebindings):
@@ -231,7 +233,7 @@ kubecenter/
 │   ├── internal/
 │   │   ├── server/       # HTTP server, routes, handlers
 │   │   │   └── middleware/ # Auth, CSRF, rate limiting, CORS
-│   │   ├── auth/         # JWT, local accounts, RBAC, sessions
+│   │   ├── auth/         # JWT, local/OIDC/LDAP providers, RBAC, sessions, provider registry
 │   │   ├── audit/        # Audit logging interface + slog impl
 │   │   ├── websocket/    # WebSocket hub, client, events (gorilla/websocket)
 │   │   ├── httputil/      # Shared HTTP response helpers
@@ -246,7 +248,7 @@ kubecenter/
 │   └── pkg/              # Public packages (api types, version)
 ├── frontend/             # Deno 2.x + Fresh 2.x frontend
 │   ├── routes/           # Pages, layout, middleware, BFF proxy
-│   ├── islands/          # Interactive components (Dashboard, Login, ResourceTable, ResourceDetail, YamlEditor, Monitoring, Storage, CNI, Alerting)
+│   ├── islands/          # Interactive components (Dashboard, Login, ResourceTable, ResourceDetail, YamlEditor, Monitoring, Storage, CNI, Alerting, AuthSettings)
 │   ├── components/       # Server-rendered UI components
 │   └── lib/              # API client, auth state, types, constants
 ├── helm/kubecenter/      # Helm chart

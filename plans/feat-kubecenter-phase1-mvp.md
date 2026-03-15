@@ -23,7 +23,7 @@ This plan incorporates research findings on Go 1.26 patterns, Fresh 2.x breaking
 | 9 | Monitoring Integration | Not started | — | |
 | 10 | CSI/CNI Wizards | Not started | — | |
 | 11 | Alerting | Not started | — | |
-| 12 | OIDC/LDAP Auth | Not started | — | |
+| 12 | OIDC/LDAP Auth | Done | #18 | OIDC (PKCE, claims mapping), LDAP (bind+search), provider registry, auth settings UI. 15 review findings: 13 fixed, 2 deferred (todos 192, 194) |
 | 13 | Helm Chart — Production | Not started | — | |
 | 14 | Audit Logging (SQLite) | Not started | — | |
 | 15 | Polish | Not started | — | |
