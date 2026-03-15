@@ -5,47 +5,13 @@ import { api } from "@/lib/api.ts";
 import { Button } from "@/components/ui/Button.tsx";
 import { Input } from "@/components/ui/Input.tsx";
 import { Card } from "@/components/ui/Card.tsx";
-
-interface ProviderInfo {
-  id: string;
-  type: string;
-  displayName: string;
-  loginURL?: string;
-}
-
-interface OIDCSettingsEntry {
-  id: string;
-  displayName: string;
-  issuerURL: string;
-  clientID: string;
-  redirectURL: string;
-  scopes: string;
-  usernameClaim: string;
-  groupsClaim: string;
-  groupsPrefix: string;
-  allowedDomains: string;
-}
-
-interface LDAPSettingsEntry {
-  id: string;
-  displayName: string;
-  url: string;
-  bindDN: string;
-  userBaseDN: string;
-  userFilter: string;
-  groupBaseDN: string;
-  groupFilter: string;
-  groupNameAttr: string;
-  usernameMapAttr: string;
-  groupsPrefix: string;
-  startTLS: boolean;
-}
+import type { ProviderInfo } from "@/lib/k8s-types.ts";
 
 type TabType = "providers" | "oidc" | "ldap";
 
 /**
  * Admin UI for managing authentication providers.
- * Shows configured providers and allows adding OIDC/LDAP configurations.
+ * Shows configured providers and allows testing OIDC/LDAP connections.
  */
 export default function AuthSettings() {
   const activeTab = useSignal<TabType>("providers");
@@ -53,6 +19,11 @@ export default function AuthSettings() {
   const loading = useSignal(true);
   const testResult = useSignal("");
   const testLoading = useSignal(false);
+
+  // Test form state (signals instead of document.getElementById)
+  const oidcIssuerURL = useSignal("");
+  const ldapURL = useSignal("");
+  const ldapBindDN = useSignal("");
 
   useEffect(() => {
     if (!IS_BROWSER) return;
@@ -72,13 +43,14 @@ export default function AuthSettings() {
     }
   }
 
-  async function testOIDCConnection(issuerURL: string) {
+  async function testOIDCConnection() {
+    if (!oidcIssuerURL.value) return;
     testLoading.value = true;
     testResult.value = "";
     try {
       await api("/v1/settings/auth/test-oidc", {
         method: "POST",
-        body: JSON.stringify({ issuerURL }),
+        body: JSON.stringify({ issuerURL: oidcIssuerURL.value }),
       });
       testResult.value = "OIDC discovery successful";
     } catch (err) {
@@ -88,13 +60,14 @@ export default function AuthSettings() {
     }
   }
 
-  async function testLDAPConnection(url: string, bindDN: string) {
+  async function testLDAPConnection() {
+    if (!ldapURL.value || !ldapBindDN.value) return;
     testLoading.value = true;
     testResult.value = "";
     try {
       await api("/v1/settings/auth/test-ldap", {
         method: "POST",
-        body: JSON.stringify({ url, bindDN }),
+        body: JSON.stringify({ url: ldapURL.value, bindDN: ldapBindDN.value }),
       });
       testResult.value = "LDAP connection successful";
     } catch (err) {
@@ -197,19 +170,17 @@ export default function AuthSettings() {
                 label="Test Issuer URL"
                 type="url"
                 placeholder="https://accounts.google.com"
-                id="test-oidc-issuer"
+                value={oidcIssuerURL.value}
+                onInput={(e) => {
+                  oidcIssuerURL.value = (e.target as HTMLInputElement).value;
+                }}
               />
               <div class="flex items-center gap-3">
                 <Button
                   type="button"
                   variant="secondary"
                   loading={testLoading.value}
-                  onClick={() => {
-                    const input = document.getElementById(
-                      "test-oidc-issuer",
-                    ) as HTMLInputElement;
-                    if (input?.value) testOIDCConnection(input.value);
-                  }}
+                  onClick={testOIDCConnection}
                 >
                   Test Discovery
                 </Button>
@@ -244,30 +215,26 @@ export default function AuthSettings() {
                 label="Test LDAP URL"
                 type="url"
                 placeholder="ldaps://ldap.example.com:636"
-                id="test-ldap-url"
+                value={ldapURL.value}
+                onInput={(e) => {
+                  ldapURL.value = (e.target as HTMLInputElement).value;
+                }}
               />
               <Input
                 label="Test Bind DN"
                 type="text"
                 placeholder="cn=readonly,dc=example,dc=com"
-                id="test-ldap-bind-dn"
+                value={ldapBindDN.value}
+                onInput={(e) => {
+                  ldapBindDN.value = (e.target as HTMLInputElement).value;
+                }}
               />
               <div class="flex items-center gap-3">
                 <Button
                   type="button"
                   variant="secondary"
                   loading={testLoading.value}
-                  onClick={() => {
-                    const urlInput = document.getElementById(
-                      "test-ldap-url",
-                    ) as HTMLInputElement;
-                    const dnInput = document.getElementById(
-                      "test-ldap-bind-dn",
-                    ) as HTMLInputElement;
-                    if (urlInput?.value && dnInput?.value) {
-                      testLDAPConnection(urlInput.value, dnInput.value);
-                    }
-                  }}
+                  onClick={testLDAPConnection}
                 >
                   Test Connection
                 </Button>

@@ -207,9 +207,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 
 	if stateParam == "" || code == "" {
-		writeJSON(w, http.StatusBadRequest, api.Response{
-			Error: &api.APIError{Code: 400, Message: "missing state or code parameter"},
-		})
+		http.Redirect(w, r, "/login?error=invalid_request", http.StatusFound)
 		return
 	}
 
@@ -264,7 +262,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "oidc_access_token",
 		Value:    accessToken,
-		Path:     "/",
+		Path:     "/api/auth/oidc-token-exchange",
 		HttpOnly: true,
 		Secure:   !s.Config.Dev,
 		SameSite: http.SameSiteLaxMode, // Lax to allow cross-origin OIDC redirect

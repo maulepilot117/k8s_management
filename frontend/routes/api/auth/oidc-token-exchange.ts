@@ -13,6 +13,16 @@ import { define } from "@/utils.ts";
  */
 export const handler = define.handlers({
   POST(ctx) {
+    // CSRF protection: require X-Requested-With header (cannot be sent cross-origin without CORS preflight)
+    if (!ctx.req.headers.get("x-requested-with")) {
+      return new Response(
+        JSON.stringify({
+          error: { code: 403, message: "Missing X-Requested-With header" },
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     const cookieHeader = ctx.req.headers.get("cookie") ?? "";
     const cookies = parseCookies(cookieHeader);
     const accessToken = cookies["oidc_access_token"];
@@ -28,7 +38,7 @@ export const handler = define.handlers({
 
     // Clear the cookie
     const clearCookie =
-      "oidc_access_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+      "oidc_access_token=; Path=/api/auth/oidc-token-exchange; HttpOnly; SameSite=Lax; Max-Age=0";
 
     return new Response(
       JSON.stringify({

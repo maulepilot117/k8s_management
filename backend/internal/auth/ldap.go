@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -60,10 +61,15 @@ func NewLDAPProvider(config LDAPProviderConfig, logger *slog.Logger) *LDAPProvid
 	if len(config.UserAttributes) == 0 {
 		config.UserAttributes = []string{"dn", "uid", "mail", "cn", "sAMAccountName", "memberOf"}
 	}
-	return &LDAPProvider{
+	p := &LDAPProvider{
 		config: config,
 		logger: logger.With("ldap_provider", config.ID),
 	}
+	// Warn if credentials will be sent in plaintext
+	if strings.HasPrefix(config.URL, "ldap://") && !config.StartTLS {
+		p.logger.Warn("LDAP connection is plaintext — credentials will be transmitted unencrypted. Use ldaps:// or enable StartTLS.")
+	}
+	return p
 }
 
 func (p *LDAPProvider) Type() string { return "ldap" }
@@ -172,7 +178,10 @@ func (p *LDAPProvider) connect() (*ldap.Conn, error) {
 		return nil, err
 	}
 
-	conn, err := ldap.DialURL(p.config.URL, ldap.DialWithTLSConfig(tlsConfig))
+	conn, err := ldap.DialURL(p.config.URL,
+		ldap.DialWithTLSConfig(tlsConfig),
+		ldap.DialWithDialer(&net.Dialer{Timeout: ldapDialTimeout}),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("LDAP dial failed: %w", err)
 	}

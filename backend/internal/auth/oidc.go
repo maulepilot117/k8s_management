@@ -190,6 +190,11 @@ func (p *OIDCProvider) HandleCallback(ctx context.Context, code string, flowStat
 		return nil, fmt.Errorf("extracting claims: %w", err)
 	}
 
+	// Reject unverified emails when using email as the username claim (identity spoofing prevention)
+	if p.Config.UsernameClaim == "email" && claims.Email != "" && !claims.EmailVerified {
+		return nil, fmt.Errorf("email address not verified by identity provider")
+	}
+
 	// Extract groups claim (can be string or []string depending on provider)
 	groups := p.extractGroups(idToken)
 

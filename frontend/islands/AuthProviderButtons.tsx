@@ -3,14 +3,7 @@ import { IS_BROWSER } from "fresh/runtime";
 import { useEffect } from "preact/hooks";
 import { api } from "@/lib/api.ts";
 import { Button } from "@/components/ui/Button.tsx";
-import { BACKEND_URL } from "@/lib/constants.ts";
-
-interface ProviderInfo {
-  id: string;
-  type: string;
-  displayName: string;
-  loginURL?: string;
-}
+import type { ProviderInfo } from "@/lib/k8s-types.ts";
 
 /**
  * Renders SSO buttons for configured OIDC providers and a provider selector
