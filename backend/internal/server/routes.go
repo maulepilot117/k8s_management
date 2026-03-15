@@ -89,10 +89,13 @@ func (s *Server) registerRoutes() {
 				s.registerAlertingRoutes(ar)
 			}
 
-			// Auth settings routes (authenticated, admin-only in practice)
-			ar.Get("/settings/auth", s.handleGetAuthSettings)
-			ar.Post("/settings/auth/test-oidc", s.handleTestOIDC)
-			ar.Post("/settings/auth/test-ldap", s.handleTestLDAP)
+			// Auth settings routes — admin only (prevents SSRF via test endpoints)
+			ar.Route("/settings/auth", func(sr chi.Router) {
+				sr.Use(middleware.RequireAdmin)
+				sr.Get("/", s.handleGetAuthSettings)
+				sr.Post("/test-oidc", s.handleTestOIDC)
+				sr.Post("/test-ldap", s.handleTestLDAP)
+			})
 		})
 	})
 }

@@ -56,6 +56,30 @@ func CSRF(next http.Handler) http.Handler {
 	})
 }
 
+// RequireAdmin returns middleware that restricts access to users with the "admin" role.
+// Must be applied after Auth middleware (requires user in context).
+func RequireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			writeAuthError(w, http.StatusUnauthorized, "not authenticated")
+			return
+		}
+		isAdmin := false
+		for _, role := range user.Roles {
+			if role == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+		if !isAdmin {
+			writeAuthError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func writeAuthError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -62,8 +62,10 @@ func (s *Server) issueTokenPair(w http.ResponseWriter, user *auth.User) (string,
 		Provider:  user.Provider,
 		ExpiresAt: time.Now().Add(auth.RefreshTokenLifetime),
 	}
-	// Cache user data for OIDC users (no local store to look up on refresh)
-	if user.Provider == "oidc" {
+	// Cache user data for non-local providers (OIDC has no local store,
+	// LDAP would require reconnecting to the directory on refresh).
+	// Local users are looked up by ID from the in-memory store instead.
+	if user.Provider != "local" {
 		session.CachedUser = user
 	}
 	s.Sessions.Store(session)

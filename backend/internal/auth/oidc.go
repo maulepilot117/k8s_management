@@ -40,6 +40,7 @@ type OIDCProvider struct {
 	provider     *oidc.Provider
 	oauth2Config oauth2.Config
 	verifier     *oidc.IDTokenVerifier
+	httpClient   *http.Client // custom TLS client for token exchange
 	stateStore   *OIDCStateStore
 	logger       *slog.Logger
 }
@@ -108,6 +109,7 @@ func NewOIDCProvider(ctx context.Context, config OIDCProviderConfig, stateStore 
 		provider:     provider,
 		oauth2Config: oauth2Config,
 		verifier:     verifier,
+		httpClient:   httpClient,
 		stateStore:   stateStore,
 		logger:       logger.With("oidc_provider", config.ID),
 	}, nil
@@ -155,8 +157,12 @@ func (p *OIDCProvider) LoginRedirect() (redirectURL string, err error) {
 // HandleCallback exchanges the authorization code for tokens, verifies the ID token,
 // and maps claims to a k8sCenter User.
 func (p *OIDCProvider) HandleCallback(ctx context.Context, code string, flowState *OIDCFlowState) (*User, error) {
+	// Inject the custom HTTP client (with TLS config) into the context for token exchange.
+	// Without this, Exchange falls back to http.DefaultClient, ignoring CACertPath/TLSInsecure.
+	exchangeCtx := oidc.ClientContext(ctx, p.httpClient)
+
 	// Exchange code for tokens with PKCE verifier
-	oauth2Token, err := p.oauth2Config.Exchange(ctx, code, oauth2.VerifierOption(flowState.PKCEVerifier))
+	oauth2Token, err := p.oauth2Config.Exchange(exchangeCtx, code, oauth2.VerifierOption(flowState.PKCEVerifier))
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %w", err)
 	}
