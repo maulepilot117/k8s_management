@@ -2,8 +2,8 @@ apiVersion: v2
 name: kubecenter
 description: A web-based Kubernetes management platform
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.3.0
+appVersion: "0.3.0"
 keywords:
   - kubernetes
   - management
@@ -16,3 +16,7 @@ dependencies:
     repository: https://prometheus-community.github.io/helm-charts
     condition: monitoring.deploy
     alias: monitoring-stack
+  - name: postgresql
+    version: "~16.4"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: postgresql.enabled

@@ -6,13 +6,21 @@ LDFLAGS := -s -w \
   -X github.com/kubecenter/kubecenter/pkg/version.Commit=$(COMMIT) \
   -X github.com/kubecenter/kubecenter/pkg/version.BuildDate=$(BUILD_DATE)
 
-.PHONY: dev dev-backend dev-frontend build build-backend build-frontend \
+.PHONY: dev dev-backend dev-frontend dev-db dev-db-stop \
+       build build-backend build-frontend \
        test test-backend test-frontend lint lint-backend lint-frontend \
        clean docker-build docker-build-backend docker-build-frontend \
        helm-lint helm-template
 
 # Development
 dev: dev-backend
+
+dev-db:
+	docker compose up -d
+	@echo "PostgreSQL: postgresql://k8scenter:k8scenter@localhost:5432/k8scenter?sslmode=disable"
+
+dev-db-stop:
+	docker compose down
 
 dev-backend:
 	cd backend && go run ./cmd/kubecenter --config ""

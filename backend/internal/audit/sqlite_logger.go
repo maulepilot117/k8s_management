@@ -5,47 +5,45 @@ import (
 	"log/slog"
 )
 
-// SQLiteLogger implements the Logger interface with persistent SQLite storage.
-// It dual-writes to both SQLite (for querying) and slog (for log aggregators).
-type SQLiteLogger struct {
-	store  *SQLiteStore
+// PostgresLogger implements the Logger interface with persistent PostgreSQL storage.
+// It dual-writes to both PostgreSQL (for querying) and slog (for log aggregators).
+type PostgresLogger struct {
+	store  *PostgresStore
 	slog   *SlogLogger
 	logger *slog.Logger
 }
 
-// NewSQLiteLogger creates an audit logger that persists entries in SQLite
+// NewPostgresLogger creates an audit logger that persists entries in PostgreSQL
 // and also writes to structured log output.
-func NewSQLiteLogger(store *SQLiteStore, logger *slog.Logger) *SQLiteLogger {
-	return &SQLiteLogger{
+func NewPostgresLogger(store *PostgresStore, logger *slog.Logger) *PostgresLogger {
+	return &PostgresLogger{
 		store:  store,
 		slog:   NewSlogLogger(logger),
 		logger: logger,
 	}
 }
 
-// Log writes an audit entry to both SQLite and slog.
-// SQLite errors are logged but do not fail the caller — the operation
-// being audited should not be blocked by audit storage failures.
-func (l *SQLiteLogger) Log(ctx context.Context, e Entry) error {
+// Log writes an audit entry to both PostgreSQL and slog.
+// PostgreSQL errors are logged but do not fail the caller.
+func (l *PostgresLogger) Log(ctx context.Context, e Entry) error {
 	// Always write to slog (structured log output for aggregators)
 	l.slog.Log(ctx, e)
 
-	// Persist to SQLite
+	// Persist to PostgreSQL
 	if err := l.store.Insert(ctx, e); err != nil {
 		l.logger.Error("failed to persist audit entry", "error", err, "action", e.Action, "user", e.User)
-		// Don't return the error — audit storage failure should not block the operation
 	}
 
 	return nil
 }
 
-// Query delegates to the underlying SQLiteStore for audit log queries.
-func (l *SQLiteLogger) Query(ctx context.Context, params QueryParams) ([]Entry, int, error) {
+// Query delegates to the underlying PostgresStore for audit log queries.
+func (l *PostgresLogger) Query(ctx context.Context, params QueryParams) ([]Entry, int, error) {
 	return l.store.Query(ctx, params)
 }
 
-// Cleanup delegates to the underlying SQLiteStore for retention cleanup.
-func (l *SQLiteLogger) Cleanup(ctx context.Context, retentionDays int) (int64, error) {
+// Cleanup delegates to the underlying PostgresStore for retention cleanup.
+func (l *PostgresLogger) Cleanup(ctx context.Context, retentionDays int) (int64, error) {
 	return l.store.Cleanup(ctx, retentionDays)
 }
 

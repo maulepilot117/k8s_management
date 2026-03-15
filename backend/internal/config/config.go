@@ -19,15 +19,22 @@ type Config struct {
 	Monitoring MonitoringConfig `koanf:"monitoring"`
 	Alerting   AlertingConfig   `koanf:"alerting"`
 	Audit      AuditConfig      `koanf:"audit"`
+	Database   DatabaseConfig   `koanf:"database"`
 	Dev        bool             `koanf:"dev"`
 	ClusterID  string           `koanf:"clusterid"`
 	CORS       CORSConfig       `koanf:"cors"`
 }
 
-// AuditConfig holds configuration for persistent audit logging.
+// AuditConfig holds configuration for audit logging.
 type AuditConfig struct {
-	DBPath        string `koanf:"dbpath"`        // Path to SQLite database file (empty = slog-only)
-	RetentionDays int    `koanf:"retentiondays"` // Days to retain audit entries (default: 90)
+	RetentionDays int `koanf:"retentiondays"` // Days to retain audit entries (default: 90)
+}
+
+// DatabaseConfig holds PostgreSQL connection configuration.
+type DatabaseConfig struct {
+	URL      string `koanf:"url"`      // PostgreSQL connection URL (empty = audit via slog only)
+	MaxConns int    `koanf:"maxconns"` // Connection pool max (default: 10)
+	MinConns int    `koanf:"minconns"` // Connection pool min (default: 2)
 }
 
 type MonitoringConfig struct {
