@@ -11,6 +11,8 @@ type Response struct {
 type Metadata struct {
 	Total    int    `json:"total"`
 	Continue string `json:"continue,omitempty"`
+	Page     int    `json:"page,omitempty"`
+	PageSize int    `json:"pageSize,omitempty"`
 }
 
 // APIError is the standard error response.

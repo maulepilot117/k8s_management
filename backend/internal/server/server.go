@@ -37,6 +37,7 @@ type Server struct {
 	Sessions        *auth.SessionStore
 	RBACChecker     *auth.RBACChecker
 	AuditLogger     audit.Logger
+	AuditStore      *audit.SQLiteStore
 	RateLimiter     *middleware.RateLimiter
 	YAMLRateLimiter *middleware.RateLimiter
 	ResourceHandler *resources.Handler
@@ -64,6 +65,7 @@ type Deps struct {
 	Sessions      *auth.SessionStore
 	RBACChecker   *auth.RBACChecker
 	AuditLogger     audit.Logger
+	AuditStore      *audit.SQLiteStore
 	RateLimiter     *middleware.RateLimiter
 	YAMLRateLimiter *middleware.RateLimiter
 	Hub               *websocket.Hub
@@ -91,6 +93,7 @@ func New(deps Deps) *Server {
 		Sessions:     deps.Sessions,
 		RBACChecker:  deps.RBACChecker,
 		AuditLogger:     deps.AuditLogger,
+		AuditStore:      deps.AuditStore,
 		RateLimiter:     deps.RateLimiter,
 		YAMLRateLimiter: deps.YAMLRateLimiter,
 		Hub:             deps.Hub,

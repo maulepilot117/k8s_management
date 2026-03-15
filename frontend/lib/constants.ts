@@ -202,6 +202,11 @@ export const NAV_SECTIONS = [
         href: "/settings/auth",
         icon: "settings",
       },
+      {
+        label: "Audit Log",
+        href: "/settings/audit",
+        icon: "settings",
+      },
     ],
   },
 ] as const;

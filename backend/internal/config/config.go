@@ -18,9 +18,16 @@ type Config struct {
 	Auth       AuthConfig       `koanf:"auth"`
 	Monitoring MonitoringConfig `koanf:"monitoring"`
 	Alerting   AlertingConfig   `koanf:"alerting"`
+	Audit      AuditConfig      `koanf:"audit"`
 	Dev        bool             `koanf:"dev"`
 	ClusterID  string           `koanf:"clusterid"`
 	CORS       CORSConfig       `koanf:"cors"`
+}
+
+// AuditConfig holds configuration for persistent audit logging.
+type AuditConfig struct {
+	DBPath        string `koanf:"dbpath"`        // Path to SQLite database file (empty = slog-only)
+	RetentionDays int    `koanf:"retentiondays"` // Days to retain audit entries (default: 90)
 }
 
 type MonitoringConfig struct {
@@ -121,6 +128,7 @@ func Load(configPath string) (*Config, error) {
 		"log.format":             DefaultLogFormat,
 		"dev":                         DefaultDevMode,
 		"clusterid":                   DefaultClusterID,
+		"audit.retentiondays":         DefaultAuditRetentionDays,
 		"alerting.enabled":            DefaultAlertingEnabled,
 		"alerting.retentiondays":      DefaultAlertingRetentionDays,
 		"alerting.ratelimit":          DefaultAlertingRateLimit,

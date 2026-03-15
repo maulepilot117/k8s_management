@@ -166,7 +166,42 @@ func main() {
 		authRegistry.RegisterCredential(ldapCfg.ID, ldapCfg.DisplayName, ldapProvider)
 		logger.Info("registered LDAP provider", "id", ldapCfg.ID, "url", ldapCfg.URL)
 	}
-	auditLogger := audit.NewSlogLogger(logger)
+	// Initialize audit logger — SQLite if configured, slog-only otherwise
+	var auditLogger audit.Logger
+	var auditStore *audit.SQLiteStore
+	if cfg.Audit.DBPath != "" {
+		var err error
+		auditStore, err = audit.NewSQLiteStore(cfg.Audit.DBPath)
+		if err != nil {
+			logger.Error("failed to open audit database, falling back to slog", "error", err, "path", cfg.Audit.DBPath)
+			auditLogger = audit.NewSlogLogger(logger)
+		} else {
+			sqliteLogger := audit.NewSQLiteLogger(auditStore, logger)
+			auditLogger = sqliteLogger
+			logger.Info("audit logging to SQLite", "path", cfg.Audit.DBPath, "retentionDays", cfg.Audit.RetentionDays)
+
+			// Start retention cleanup goroutine
+			go func() {
+				ticker := time.NewTicker(24 * time.Hour)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						deleted, err := auditStore.Cleanup(ctx, cfg.Audit.RetentionDays)
+						if err != nil {
+							logger.Error("audit cleanup failed", "error", err)
+						} else if deleted > 0 {
+							logger.Info("audit cleanup completed", "deleted", deleted)
+						}
+					}
+				}
+			}()
+		}
+	} else {
+		auditLogger = audit.NewSlogLogger(logger)
+	}
 	rateLimiter := middleware.NewRateLimiter()
 	rateLimiter.StartCleanup(ctx)
 	yamlRateLimiter := middleware.NewRateLimiterWithRate(30, time.Minute)
@@ -244,6 +279,7 @@ func main() {
 		Sessions:      sessions,
 		RBACChecker:   rbacChecker,
 		AuditLogger:   auditLogger,
+		AuditStore:    auditStore,
 		RateLimiter:     rateLimiter,
 		YAMLRateLimiter: yamlRateLimiter,
 		Hub:               hub,
