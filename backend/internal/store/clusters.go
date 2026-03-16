@@ -28,13 +28,16 @@ type ClusterRecord struct {
 }
 
 // ClusterStore handles CRUD for the clusters table.
+// Credentials are encrypted at rest using AES-256-GCM.
 type ClusterStore struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	encryptionKey string // master secret for encrypting credentials
 }
 
 // NewClusterStore creates a cluster store backed by PostgreSQL.
-func NewClusterStore(pool *pgxpool.Pool) *ClusterStore {
-	return &ClusterStore{pool: pool}
+// The encryptionKey is used to encrypt/decrypt credential data at rest.
+func NewClusterStore(pool *pgxpool.Pool, encryptionKey string) *ClusterStore {
+	return &ClusterStore{pool: pool, encryptionKey: encryptionKey}
 }
 
 // List returns all registered clusters.
@@ -77,12 +80,24 @@ func (s *ClusterStore) Get(ctx context.Context, id string) (*ClusterRecord, erro
 	return &c, nil
 }
 
-// Create inserts a new cluster.
+// Create inserts a new cluster with encrypted credentials.
 func (s *ClusterStore) Create(ctx context.Context, c ClusterRecord) error {
-	_, err := s.pool.Exec(ctx, `
+	encAuthData, err := Encrypt(c.AuthData, s.encryptionKey)
+	if err != nil {
+		return fmt.Errorf("encrypting auth data: %w", err)
+	}
+	var encCAData []byte
+	if len(c.CAData) > 0 {
+		encCAData, err = Encrypt(c.CAData, s.encryptionKey)
+		if err != nil {
+			return fmt.Errorf("encrypting CA data: %w", err)
+		}
+	}
+
+	_, err = s.pool.Exec(ctx, `
 		INSERT INTO clusters (id, name, display_name, api_server_url, ca_data, auth_type, auth_data, is_local)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		c.ID, c.Name, c.DisplayName, c.APIServerURL, c.CAData, c.AuthType, c.AuthData, c.IsLocal)
+		c.ID, c.Name, c.DisplayName, c.APIServerURL, encCAData, c.AuthType, encAuthData, c.IsLocal)
 	if err != nil {
 		return fmt.Errorf("creating cluster: %w", err)
 	}

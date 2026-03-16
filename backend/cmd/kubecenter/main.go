@@ -151,7 +151,11 @@ func main() {
 
 			// Initialize settings and cluster stores
 			settingsService = appstore.NewSettingsService(db.Pool)
-			clusterStore = appstore.NewClusterStore(db.Pool)
+			encKey := cfg.Database.EncryptionKey
+			if encKey == "" {
+				encKey = cfg.Auth.JWTSecret // fall back to JWT secret as encryption key
+			}
+			clusterStore = appstore.NewClusterStore(db.Pool, encKey)
 
 			// Register local cluster
 			apiServerHost := "in-cluster"
