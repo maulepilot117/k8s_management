@@ -9,163 +9,304 @@ interface PerformancePanelProps {
   namespace?: string;
 }
 
-/** Maps resource kinds to their Grafana dashboard UIDs and variable names. */
-const DASHBOARD_MAP: Record<string, { uid: string; varName: string }> = {
-  pods: { uid: "kubecenter-pod-detail", varName: "pod" },
-  deployments: { uid: "kubecenter-deployment-detail", varName: "deployment" },
-  statefulsets: {
-    uid: "kubecenter-statefulset-detail",
-    varName: "statefulset",
-  },
-  daemonsets: { uid: "kubecenter-daemonset-detail", varName: "daemonset" },
-  nodes: { uid: "kubecenter-node-detail", varName: "node" },
-  pvcs: { uid: "kubecenter-pvc-detail", varName: "pvc" },
+interface MetricSeries {
+  metric: Record<string, string>;
+  values: [number, string][];
+}
+
+interface QueryRangeResult {
+  resultType: string;
+  result: MetricSeries[];
+}
+
+/** PromQL templates per resource kind */
+const QUERIES: Record<string, { title: string; query: string }[]> = {
+  deployments: [
+    {
+      title: "CPU Usage (cores)",
+      query:
+        'sum(rate(container_cpu_usage_seconds_total{namespace="{namespace}",pod=~"{name}-.*",container!=""}[5m]))',
+    },
+    {
+      title: "Memory Usage (MB)",
+      query:
+        'sum(container_memory_working_set_bytes{namespace="{namespace}",pod=~"{name}-.*",container!=""}) / 1024 / 1024',
+    },
+    {
+      title: "Replicas",
+      query:
+        'kube_deployment_status_replicas{namespace="{namespace}",deployment="{name}"}',
+    },
+  ],
+  pods: [
+    {
+      title: "CPU Usage (cores)",
+      query:
+        'sum(rate(container_cpu_usage_seconds_total{namespace="{namespace}",pod="{name}",container!=""}[5m]))',
+    },
+    {
+      title: "Memory Usage (MB)",
+      query:
+        'sum(container_memory_working_set_bytes{namespace="{namespace}",pod="{name}",container!=""}) / 1024 / 1024',
+    },
+  ],
+  nodes: [
+    {
+      title: "CPU Usage %",
+      query:
+        '100 - (avg(rate(node_cpu_seconds_total{mode="idle",instance=~"{name}.*"}[5m])) * 100)',
+    },
+    {
+      title: "Memory Usage %",
+      query:
+        '100 * (1 - node_memory_MemAvailable_bytes{instance=~"{name}.*"} / node_memory_MemTotal_bytes{instance=~"{name}.*"})',
+    },
+  ],
+  statefulsets: [
+    {
+      title: "CPU Usage (cores)",
+      query:
+        'sum(rate(container_cpu_usage_seconds_total{namespace="{namespace}",pod=~"{name}-.*",container!=""}[5m]))',
+    },
+    {
+      title: "Memory Usage (MB)",
+      query:
+        'sum(container_memory_working_set_bytes{namespace="{namespace}",pod=~"{name}-.*",container!=""}) / 1024 / 1024',
+    },
+  ],
+  daemonsets: [
+    {
+      title: "CPU Usage (cores)",
+      query:
+        'sum(rate(container_cpu_usage_seconds_total{namespace="{namespace}",pod=~"{name}-.*",container!=""}[5m]))',
+    },
+    {
+      title: "Memory Usage (MB)",
+      query:
+        'sum(container_memory_working_set_bytes{namespace="{namespace}",pod=~"{name}-.*",container!=""}) / 1024 / 1024',
+    },
+  ],
 };
 
-interface MonitoringStatusResponse {
-  prometheus: { available: boolean };
-  grafana: { available: boolean };
+interface ChartData {
+  title: string;
+  values: { time: Date; value: number }[];
+  loading: boolean;
+  error: string | null;
 }
 
 export default function PerformancePanel(
   { kind, name, namespace }: PerformancePanelProps,
 ) {
-  const status = useSignal<MonitoringStatusResponse | null>(null);
-  const loading = useSignal(true);
-  const iframeLoaded = useSignal(false);
-  const error = useSignal<string | null>(null);
+  const charts = useSignal<ChartData[]>([]);
+  const monAvailable = useSignal<boolean | null>(null);
 
   useEffect(() => {
     if (!IS_BROWSER) return;
 
-    apiGet<MonitoringStatusResponse>("/v1/monitoring/status")
+    // Check monitoring availability
+    apiGet<{ prometheus: { available: boolean } }>("/v1/monitoring/status")
       .then((res) => {
-        status.value = res.data;
+        monAvailable.value = res.data.prometheus.available;
+        if (res.data.prometheus.available) {
+          loadMetrics();
+        }
       })
-      .catch((err) => {
-        error.value = err.message ?? "Failed to check monitoring status";
-      })
-      .finally(() => {
-        loading.value = false;
+      .catch(() => {
+        monAvailable.value = false;
       });
-  }, []);
+  }, [kind, name, namespace]);
+
+  async function loadMetrics() {
+    const templates = QUERIES[kind];
+    if (!templates) return;
+
+    const end = Math.floor(Date.now() / 1000);
+    const start = end - 3600; // last 1 hour
+    const step = 60; // 1 minute resolution
+
+    const initial: ChartData[] = templates.map((t) => ({
+      title: t.title,
+      values: [],
+      loading: true,
+      error: null,
+    }));
+    charts.value = initial;
+
+    const results = await Promise.allSettled(
+      templates.map(async (t, i) => {
+        const query = t.query
+          .replaceAll("{namespace}", namespace || "")
+          .replaceAll("{name}", name);
+
+        const res = await apiGet<QueryRangeResult>(
+          `/v1/monitoring/query_range?query=${
+            encodeURIComponent(query)
+          }&start=${start}&end=${end}&step=${step}`,
+        );
+
+        const values =
+          res.data.result?.[0]?.values?.map(([ts, val]: [number, string]) => ({
+            time: new Date(ts * 1000),
+            value: parseFloat(val),
+          })) || [];
+
+        return { index: i, values };
+      }),
+    );
+
+    const updated = [...initial];
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        updated[r.value.index] = {
+          ...updated[r.value.index],
+          values: r.value.values,
+          loading: false,
+        };
+      } else {
+        const idx = results.indexOf(r);
+        updated[idx] = {
+          ...updated[idx],
+          loading: false,
+          error: "Query failed",
+        };
+      }
+    }
+    charts.value = updated;
+  }
 
   if (!IS_BROWSER) return null;
 
-  if (loading.value) {
+  if (monAvailable.value === null) {
     return (
-      <div class="flex items-center justify-center p-12">
+      <div class="flex justify-center p-12">
         <div class="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-brand" />
       </div>
     );
   }
 
-  if (error.value) {
+  if (!monAvailable.value) {
     return (
-      <div class="p-12 text-center text-sm text-slate-400 dark:text-slate-500">
-        <p class="text-lg font-medium text-slate-500 dark:text-slate-400">
-          Monitoring Error
+      <div class="p-12 text-center text-sm text-slate-400">
+        <p class="text-lg font-medium text-slate-500">
+          Monitoring Not Available
         </p>
-        <p class="mt-1">{error.value}</p>
+        <p class="mt-2">Prometheus was not detected in this cluster.</p>
       </div>
     );
   }
 
-  // Monitoring not configured
-  if (!status.value?.prometheus.available && !status.value?.grafana.available) {
+  if (!QUERIES[kind]) {
     return (
-      <div class="p-12 text-center text-sm text-slate-400 dark:text-slate-500">
-        <p class="text-lg font-medium text-slate-500 dark:text-slate-400">
-          Monitoring Not Configured
-        </p>
-        <p class="mt-2">
-          Prometheus and Grafana were not detected in this cluster.
-        </p>
-        <a
-          href="/monitoring"
-          class="mt-3 inline-block text-brand hover:underline"
-        >
-          View monitoring status
-        </a>
-      </div>
-    );
-  }
-
-  // No dashboard for this resource type
-  const dashboard = DASHBOARD_MAP[kind];
-  if (!dashboard) {
-    return (
-      <div class="p-12 text-center text-sm text-slate-400 dark:text-slate-500">
-        <p class="text-lg font-medium text-slate-500 dark:text-slate-400">
-          No Metrics Dashboard
-        </p>
+      <div class="p-12 text-center text-sm text-slate-400">
+        <p class="text-lg font-medium text-slate-500">No Metrics Available</p>
         <p class="mt-1">
-          Metrics dashboards are not available for this resource type.
+          Metrics are not configured for this resource type.
         </p>
-        {status.value?.prometheus.available && (
-          <a
-            href="/monitoring/prometheus"
-            class="mt-3 inline-block text-brand hover:underline"
-          >
-            Run a custom PromQL query
-          </a>
-        )}
       </div>
     );
   }
-
-  // Grafana not available but Prometheus is
-  if (!status.value?.grafana.available) {
-    return (
-      <div class="p-12 text-center text-sm text-slate-400 dark:text-slate-500">
-        <p class="text-lg font-medium text-slate-500 dark:text-slate-400">
-          Grafana Not Available
-        </p>
-        <p class="mt-2">
-          Prometheus is available but Grafana was not detected. Dashboard embeds
-          require Grafana.
-        </p>
-        <a
-          href="/monitoring/prometheus"
-          class="mt-3 inline-block text-brand hover:underline"
-        >
-          Use Prometheus query interface instead
-        </a>
-      </div>
-    );
-  }
-
-  // Build iframe URL
-  const params = new URLSearchParams({
-    orgId: "1",
-    kiosk: "1",
-    refresh: "30s",
-  });
-  if (namespace) params.set(`var-namespace`, namespace);
-  params.set(`var-${dashboard.varName}`, name);
-
-  const iframeSrc =
-    `/api/v1/monitoring/grafana/proxy/d-solo/${dashboard.uid}/overview?${params}`;
 
   return (
-    <div class="relative min-h-[400px]">
-      {!iframeLoaded.value && (
-        <div class="absolute inset-0 flex items-center justify-center bg-white dark:bg-slate-900">
-          <div class="flex flex-col items-center gap-2">
-            <div class="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-brand" />
-            <span class="text-sm text-slate-400">Loading dashboard...</span>
-          </div>
+    <div class="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
+      {charts.value.map((chart, i) => (
+        <div
+          key={i}
+          class="rounded-lg border border-slate-200 p-4 dark:border-slate-700"
+        >
+          <h3 class="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+            {chart.title}
+          </h3>
+          {chart.loading
+            ? (
+              <div class="flex h-32 items-center justify-center">
+                <div class="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand" />
+              </div>
+            )
+            : chart.error
+            ? (
+              <div class="flex h-32 items-center justify-center text-sm text-red-400">
+                {chart.error}
+              </div>
+            )
+            : chart.values.length === 0
+            ? (
+              <div class="flex h-32 items-center justify-center text-sm text-slate-400">
+                No data
+              </div>
+            )
+            : <MiniChart values={chart.values} />}
         </div>
-      )}
-      <iframe
-        src={iframeSrc}
-        class="h-[600px] w-full border-0"
-        onLoad={() => {
-          iframeLoaded.value = true;
-        }}
-        title={`${kind} metrics dashboard`}
-        sandbox="allow-scripts allow-same-origin"
-      />
+      ))}
+    </div>
+  );
+}
+
+/** Simple SVG sparkline chart */
+function MiniChart(
+  { values }: { values: { time: Date; value: number }[] },
+) {
+  if (values.length < 2) return <div class="h-32 text-slate-400">No data</div>;
+
+  const width = 400;
+  const height = 120;
+  const padding = 4;
+
+  const minVal = Math.min(...values.map((v) => v.value));
+  const maxVal = Math.max(...values.map((v) => v.value));
+  const range = maxVal - minVal || 1;
+
+  const points = values.map((v, i) => {
+    const x = padding + (i / (values.length - 1)) * (width - padding * 2);
+    const y = height - padding -
+      ((v.value - minVal) / range) * (height - padding * 2);
+    return `${x},${y}`;
+  });
+
+  const currentValue = values[values.length - 1].value;
+  const displayValue = currentValue < 1
+    ? currentValue.toFixed(3)
+    : currentValue < 100
+    ? currentValue.toFixed(1)
+    : Math.round(currentValue).toString();
+
+  return (
+    <div>
+      <div class="mb-1 text-right text-lg font-semibold text-slate-900 dark:text-white">
+        {displayValue}
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        class="h-28 w-full"
+        preserveAspectRatio="none"
+      >
+        {/* Area fill */}
+        <polygon
+          points={`${points[0].split(",")[0]},${height} ${points.join(" ")} ${
+            points[points.length - 1].split(",")[0]
+          },${height}`}
+          fill="url(#gradient)"
+          opacity="0.3"
+        />
+        {/* Line */}
+        <polyline
+          points={points.join(" ")}
+          fill="none"
+          stroke="rgb(59, 130, 246)"
+          stroke-width="2"
+          vector-effect="non-scaling-stroke"
+        />
+        <defs>
+          <linearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgb(59, 130, 246)" />
+            <stop offset="100%" stop-color="transparent" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="mt-1 flex justify-between text-xs text-slate-400">
+        <span>{values[0].time.toLocaleTimeString()}</span>
+        <span>{values[values.length - 1].time.toLocaleTimeString()}</span>
+      </div>
     </div>
   );
 }
