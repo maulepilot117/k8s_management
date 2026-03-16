@@ -523,8 +523,8 @@ export default function ResourceDetail({
     },
   ];
 
-  // Add Logs tab for pods (always include — LogViewer handles empty containers)
-  if (kind === "pods" && namespace) {
+  // Add Logs tab for pods
+  if (kind === "pods" && namespace && IS_BROWSER) {
     tabs.push({
       id: "logs",
       label: "Logs",
