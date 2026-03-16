@@ -121,9 +121,10 @@ export default function PerformancePanel(
     const templates = QUERIES[kind];
     if (!templates) return;
 
-    const end = Math.floor(Date.now() / 1000);
-    const start = end - 3600; // last 1 hour
-    const step = 60; // 1 minute resolution
+    const now = new Date();
+    const end = now.toISOString();
+    const start = new Date(now.getTime() - 3600 * 1000).toISOString();
+    const step = "60s";
 
     const initial: ChartData[] = templates.map((t) => ({
       title: t.title,
