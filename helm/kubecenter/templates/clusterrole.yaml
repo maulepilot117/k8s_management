@@ -84,6 +84,12 @@ rules:
   - apiGroups: ["monitoring.coreos.com"]
     resources: ["servicemonitors", "prometheuses"]
     verbs: ["list", "get"]
+  # Admission webhooks (read-only)
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      - validatingwebhookconfigurations
+      - mutatingwebhookconfigurations
+    verbs: ["get", "list", "watch"]
   # SelfSubjectAccessReview for RBAC filtering
   - apiGroups: ["authorization.k8s.io"]
     resources: ["selfsubjectaccessreviews"]

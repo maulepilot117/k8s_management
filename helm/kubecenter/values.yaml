@@ -5,6 +5,8 @@ replicaCount: 1  # Safe to increase with PostgreSQL (no single-writer constraint
 
 nameOverride: ""
 fullnameOverride: ""
+imagePullSecrets: []
+# - name: ghcr-pull-secret
 
 # -- Backend (Go API server)
 backend:

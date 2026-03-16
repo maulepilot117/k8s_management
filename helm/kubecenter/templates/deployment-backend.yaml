@@ -18,6 +18,10 @@ spec:
         {{- include "kubecenter.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "kubecenter.serviceAccountName" . }}
       securityContext:
         runAsNonRoot: true
@@ -131,17 +135,22 @@ spec:
             - name: KUBECENTER_AUTH_LDAP_{{ $i }}_USERFILTER
               value: {{ $provider.userFilter | quote }}
             {{- end }}
-          livenessProbe:
+          startupProbe:
             httpGet:
               path: /healthz
               port: http
             initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /readyz
               port: http
-            initialDelaySeconds: 5
             periodSeconds: 5
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
