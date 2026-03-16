@@ -24,6 +24,7 @@ import (
 	"github.com/kubecenter/kubecenter/internal/server"
 	"github.com/kubecenter/kubecenter/internal/server/middleware"
 	"github.com/kubecenter/kubecenter/internal/storage"
+	appstore "github.com/kubecenter/kubecenter/internal/store"
 	"github.com/kubecenter/kubecenter/internal/websocket"
 	"github.com/kubecenter/kubecenter/pkg/version"
 )
@@ -133,17 +134,18 @@ func main() {
 		authRegistry.RegisterCredential(ldapCfg.ID, ldapCfg.DisplayName, ldapProvider)
 		logger.Info("registered LDAP provider", "id", ldapCfg.ID, "url", ldapCfg.URL)
 	}
-	// Initialize audit logger — SQLite if configured, slog-only otherwise
+	// Initialize database and audit logger
 	var auditLogger audit.Logger
-	if cfg.Audit.DBPath != "" {
-		auditStore, err := audit.NewSQLiteStore(cfg.Audit.DBPath)
+	if cfg.Database.URL != "" {
+		db, err := appstore.New(ctx, cfg.Database.URL, int32(cfg.Database.MaxConns), int32(cfg.Database.MinConns), logger)
 		if err != nil {
-			logger.Error("failed to open audit database, falling back to slog", "error", err, "path", cfg.Audit.DBPath)
+			logger.Error("failed to connect to database, falling back to slog audit", "error", err)
 			auditLogger = audit.NewSlogLogger(logger)
 		} else {
-			sqliteLogger := audit.NewSQLiteLogger(auditStore, logger)
-			auditLogger = sqliteLogger
-			logger.Info("audit logging to SQLite", "path", cfg.Audit.DBPath, "retentionDays", cfg.Audit.RetentionDays)
+			auditStore := audit.NewPostgresStore(db.Pool)
+			pgLogger := audit.NewPostgresLogger(auditStore, logger)
+			auditLogger = pgLogger
+			logger.Info("audit logging to PostgreSQL", "retentionDays", cfg.Audit.RetentionDays)
 
 			// Start retention cleanup goroutine
 			go func() {
@@ -154,7 +156,7 @@ func main() {
 					case <-ctx.Done():
 						return
 					case <-ticker.C:
-						deleted, err := sqliteLogger.Cleanup(ctx, cfg.Audit.RetentionDays)
+						deleted, err := pgLogger.Cleanup(ctx, cfg.Audit.RetentionDays)
 						if err != nil {
 							logger.Error("audit cleanup failed", "error", err)
 						} else if deleted > 0 {
@@ -163,6 +165,9 @@ func main() {
 					}
 				}
 			}()
+
+			// Close database on shutdown
+			defer db.Close()
 		}
 	} else {
 		auditLogger = audit.NewSlogLogger(logger)

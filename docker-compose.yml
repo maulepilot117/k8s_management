@@ -1,0 +1,22 @@
+# Local development PostgreSQL
+# Usage: docker compose up -d
+# Connect: postgresql://k8scenter:k8scenter@localhost:5432/k8scenter?sslmode=disable
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: k8scenter
+      POSTGRES_PASSWORD: k8scenter
+      POSTGRES_DB: k8scenter
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U k8scenter"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

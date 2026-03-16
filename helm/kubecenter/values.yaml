@@ -1,7 +1,7 @@
 # k8sCenter Helm Chart Values
 # See values.schema.json for validation rules.
 
-replicaCount: 1  # Must be 1 when persistence.enabled=true (SQLite single-writer)
+replicaCount: 1  # Safe to increase with PostgreSQL (no single-writer constraint)
 
 nameOverride: ""
 fullnameOverride: ""
@@ -105,6 +105,30 @@ auth:
   #   groupNameAttr: "cn"
   #   usernameMapAttr: "sAMAccountName"
   #   groupsPrefix: "ldap:"
+
+# -- Database (PostgreSQL)
+postgresql:
+  enabled: false          # Set true to deploy Bitnami PostgreSQL subchart
+  auth:
+    username: k8scenter
+    password: ""          # Auto-generated if empty
+    database: k8scenter
+    existingSecret: ""    # Use existing k8s Secret for passwords
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: ""
+
+# -- External Database (used when postgresql.enabled=false and you have your own PostgreSQL)
+externalDatabase:
+  host: ""
+  port: 5432
+  user: k8scenter
+  password: ""
+  database: k8scenter
+  existingSecret: ""      # k8s Secret with key "password"
+  sslmode: require
 
 # -- Alerting
 alerting:

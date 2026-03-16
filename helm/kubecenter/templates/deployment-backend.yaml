@@ -49,6 +49,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "kubecenter.fullname" . }}
                   key: jwt-secret
+            {{- if or .Values.postgresql.enabled .Values.externalDatabase.host }}
+            - name: KUBECENTER_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubecenter.fullname" . }}
+                  key: database-url
+            {{- end }}
             {{- if .Values.auth.setupToken }}
             - name: KUBECENTER_AUTH_SETUPTOKEN
               valueFrom:
