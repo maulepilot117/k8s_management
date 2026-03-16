@@ -136,14 +136,14 @@ const QUERIES: Record<string, { title: string; query: string }[]> = {
   ],
   pvcs: [
     {
-      title: "Volume Usage (bytes)",
+      title: "Volume Usage (GiB)",
       query:
-        'kubelet_volume_stats_used_bytes{namespace="{namespace}",persistentvolumeclaim="{name}"}',
+        'kubelet_volume_stats_used_bytes{namespace="{namespace}",persistentvolumeclaim="{name}"} / 1024 / 1024 / 1024',
     },
     {
-      title: "Volume Capacity (bytes)",
+      title: "Volume Capacity (GiB)",
       query:
-        'kubelet_volume_stats_capacity_bytes{namespace="{namespace}",persistentvolumeclaim="{name}"}',
+        'kubelet_volume_stats_capacity_bytes{namespace="{namespace}",persistentvolumeclaim="{name}"} / 1024 / 1024 / 1024',
     },
     {
       title: "Inodes Used",
