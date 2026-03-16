@@ -198,6 +198,11 @@ export const NAV_SECTIONS = [
     title: "Settings",
     items: [
       {
+        label: "Clusters",
+        href: "/settings/clusters",
+        icon: "nodes",
+      },
+      {
         label: "Authentication",
         href: "/settings/auth",
         icon: "settings",
