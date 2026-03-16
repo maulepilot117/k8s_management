@@ -33,9 +33,24 @@ const QUERIES: Record<string, { title: string; query: string }[]> = {
         'sum(container_memory_working_set_bytes{namespace="{namespace}",pod=~"{name}-.*",container!=""}) / 1024 / 1024',
     },
     {
+      title: "Network Rx (KB/s)",
+      query:
+        'sum(rate(container_network_receive_bytes_total{namespace="{namespace}",pod=~"{name}-.*"}[5m])) / 1024',
+    },
+    {
+      title: "Network Tx (KB/s)",
+      query:
+        'sum(rate(container_network_transmit_bytes_total{namespace="{namespace}",pod=~"{name}-.*"}[5m])) / 1024',
+    },
+    {
       title: "Replicas",
       query:
         'kube_deployment_status_replicas{namespace="{namespace}",deployment="{name}"}',
+    },
+    {
+      title: "Unavailable Replicas",
+      query:
+        'kube_deployment_status_replicas_unavailable{namespace="{namespace}",deployment="{name}"}',
     },
   ],
   pods: [
@@ -49,6 +64,26 @@ const QUERIES: Record<string, { title: string; query: string }[]> = {
       query:
         'sum(container_memory_working_set_bytes{namespace="{namespace}",pod="{name}",container!=""}) / 1024 / 1024',
     },
+    {
+      title: "Network Rx (KB/s)",
+      query:
+        'sum(rate(container_network_receive_bytes_total{namespace="{namespace}",pod="{name}"}[5m])) / 1024',
+    },
+    {
+      title: "Network Tx (KB/s)",
+      query:
+        'sum(rate(container_network_transmit_bytes_total{namespace="{namespace}",pod="{name}"}[5m])) / 1024',
+    },
+    {
+      title: "Container Restarts",
+      query:
+        'sum(kube_pod_container_status_restarts_total{namespace="{namespace}",pod="{name}"})',
+    },
+    {
+      title: "Cilium Policy Drops",
+      query:
+        'sum(rate(hubble_drop_total{reason="Policy denied",destination=~"{namespace}/{name}"}[5m]))',
+    },
   ],
   nodes: [
     {
@@ -61,6 +96,35 @@ const QUERIES: Record<string, { title: string; query: string }[]> = {
       query:
         '100 * (1 - node_memory_MemAvailable_bytes{instance=~"{name}.*"} / node_memory_MemTotal_bytes{instance=~"{name}.*"})',
     },
+    {
+      title: "Network Rx (MB/s)",
+      query:
+        'sum(rate(node_network_receive_bytes_total{instance=~"{name}.*",device!~"veth.*|cali.*|lxc.*|cilium.*"}[5m])) / 1024 / 1024',
+    },
+    {
+      title: "Network Tx (MB/s)",
+      query:
+        'sum(rate(node_network_transmit_bytes_total{instance=~"{name}.*",device!~"veth.*|cali.*|lxc.*|cilium.*"}[5m])) / 1024 / 1024',
+    },
+    {
+      title: "Disk Read (MB/s)",
+      query:
+        'sum(rate(node_disk_read_bytes_total{instance=~"{name}.*"}[5m])) / 1024 / 1024',
+    },
+    {
+      title: "Disk Write (MB/s)",
+      query:
+        'sum(rate(node_disk_written_bytes_total{instance=~"{name}.*"}[5m])) / 1024 / 1024',
+    },
+    {
+      title: "Load Average (5m)",
+      query: 'node_load5{instance=~"{name}.*"}',
+    },
+    {
+      title: "Cilium Endpoints",
+      query:
+        'sum(cilium_endpoint_state{instance=~"{name}.*"}) by (endpoint_state)',
+    },
   ],
   statefulsets: [
     {
@@ -72,6 +136,21 @@ const QUERIES: Record<string, { title: string; query: string }[]> = {
       title: "Memory Usage (MB)",
       query:
         'sum(container_memory_working_set_bytes{namespace="{namespace}",pod=~"{name}-.*",container!=""}) / 1024 / 1024',
+    },
+    {
+      title: "Network Rx (KB/s)",
+      query:
+        'sum(rate(container_network_receive_bytes_total{namespace="{namespace}",pod=~"{name}-.*"}[5m])) / 1024',
+    },
+    {
+      title: "Network Tx (KB/s)",
+      query:
+        'sum(rate(container_network_transmit_bytes_total{namespace="{namespace}",pod=~"{name}-.*"}[5m])) / 1024',
+    },
+    {
+      title: "Ready Replicas",
+      query:
+        'kube_statefulset_status_replicas_ready{namespace="{namespace}",statefulset="{name}"}',
     },
   ],
   daemonsets: [
@@ -86,7 +165,12 @@ const QUERIES: Record<string, { title: string; query: string }[]> = {
         'sum(container_memory_working_set_bytes{namespace="{namespace}",pod=~"{name}-.*",container!=""}) / 1024 / 1024',
     },
     {
-      title: "Desired / Ready",
+      title: "Network Rx (KB/s)",
+      query:
+        'sum(rate(container_network_receive_bytes_total{namespace="{namespace}",pod=~"{name}-.*"}[5m])) / 1024',
+    },
+    {
+      title: "Ready / Desired",
       query:
         'kube_daemonset_status_number_ready{namespace="{namespace}",daemonset="{name}"}',
     },
@@ -187,8 +271,45 @@ const QUERIES: Record<string, { title: string; query: string }[]> = {
         'sum(container_memory_working_set_bytes{namespace="{name}",container!=""}) / 1024 / 1024',
     },
     {
+      title: "Network Rx (KB/s)",
+      query:
+        'sum(rate(container_network_receive_bytes_total{namespace="{name}"}[5m])) / 1024',
+    },
+    {
+      title: "Network Tx (KB/s)",
+      query:
+        'sum(rate(container_network_transmit_bytes_total{namespace="{name}"}[5m])) / 1024',
+    },
+    {
       title: "Pod Count",
       query: 'count(kube_pod_info{namespace="{name}"})',
+    },
+    {
+      title: "Cilium Policy Drops",
+      query:
+        'sum(rate(hubble_drop_total{reason="Policy denied",destination=~"{name}/.*"}[5m]))',
+    },
+  ],
+  networkpolicies: [
+    {
+      title: "Cilium Forwarded Flows",
+      query:
+        'sum(rate(hubble_flows_processed_total{verdict="FORWARDED",destination=~"{namespace}/.*"}[5m]))',
+    },
+    {
+      title: "Cilium Dropped Flows",
+      query:
+        'sum(rate(hubble_flows_processed_total{verdict="DROPPED",destination=~"{namespace}/.*"}[5m]))',
+    },
+    {
+      title: "Policy Denied Drops",
+      query:
+        'sum(rate(hubble_drop_total{reason="Policy denied",destination=~"{namespace}/.*"}[5m]))',
+    },
+    {
+      title: "TCP Connections (SYN/s)",
+      query:
+        'sum(rate(hubble_tcp_flags_total{flag="SYN",destination=~"{namespace}/.*"}[5m]))',
     },
   ],
 };
