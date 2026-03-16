@@ -24,6 +24,7 @@ const (
 	ActionAlertRuleDelete    Action = "alert_rule_delete"
 	ActionAlertSettingsUpdate Action = "alert_settings_update"
 	ActionAlertTest          Action = "alert_test"
+	ActionReadLogs           Action = "read_logs"
 )
 
 // Result represents the outcome of an auditable operation.

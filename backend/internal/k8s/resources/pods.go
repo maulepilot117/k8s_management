@@ -3,6 +3,7 @@ package resources
 import (
 	"bufio"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +13,8 @@ import (
 )
 
 const kindPod = "pods"
+
+var validContainerName = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{0,252}$`)
 
 func (h *Handler) HandleListPods(w http.ResponseWriter, r *http.Request) {
 	user, ok := requireUser(w, r)
@@ -82,6 +85,12 @@ func (h *Handler) HandlePodLogs(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	container := q.Get("container")
 
+	// F7: Validate container name
+	if container != "" && !validContainerName.MatchString(container) {
+		writeError(w, http.StatusBadRequest, "invalid container name", "")
+		return
+	}
+
 	tailLines := int64(500)
 	if tl := q.Get("tailLines"); tl != "" {
 		if v, err := strconv.ParseInt(tl, 10, 64); err == nil && v > 0 {
@@ -121,6 +130,14 @@ func (h *Handler) HandlePodLogs(w http.ResponseWriter, r *http.Request) {
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
+		// F6: Check context cancellation periodically (every 100 lines)
+		if len(lines)%100 == 0 {
+			select {
+			case <-r.Context().Done():
+				return
+			default:
+			}
+		}
 		lines = append(lines, scanner.Text())
 	}
 
@@ -128,6 +145,9 @@ func (h *Handler) HandlePodLogs(w http.ResponseWriter, r *http.Request) {
 	if err := scanner.Err(); err != nil {
 		truncated = true
 	}
+
+	// F5: Audit log the log access
+	h.auditWrite(r, user, audit.ActionReadLogs, "Pod", ns, name, audit.ResultSuccess)
 
 	writeData(w, map[string]any{
 		"lines":     lines,
