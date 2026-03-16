@@ -18,13 +18,13 @@ auth:
   jwtSecret: "homelab-jwt-secret-for-k8scenter-minimum-32-bytes"
   setupToken: "homelab-setup-token"
 
+service:
+  type: LoadBalancer
+  port: 8080
+  frontendPort: 8000
+
 ingress:
-  enabled: true
-  hosts:
-    - host: k8scenter.homelab.local
-      paths:
-        - path: /
-          pathType: Prefix
+  enabled: false
 
 postgresql:
   enabled: true
