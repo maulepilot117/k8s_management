@@ -330,17 +330,25 @@ export default function PerformancePanel(
   useEffect(() => {
     if (!IS_BROWSER) return;
 
-    // Check monitoring availability
+    let interval: number | undefined;
+
+    // Check monitoring availability, then start auto-refresh
     apiGet<{ prometheus: { available: boolean } }>("/v1/monitoring/status")
       .then((res) => {
         monAvailable.value = res.data.prometheus.available;
         if (res.data.prometheus.available) {
           loadMetrics();
+          // Auto-refresh every 30 seconds
+          interval = setInterval(loadMetrics, 30_000);
         }
       })
       .catch(() => {
         monAvailable.value = false;
       });
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [kind, name, namespace]);
 
   async function loadMetrics() {
