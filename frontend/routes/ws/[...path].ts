@@ -79,29 +79,46 @@ export const handler = define.handlers({
       };
 
       // If backend closes, close client
+      // Use try/catch because close codes like 1006 are not valid to send
       backendSocket.onclose = (event) => {
-        if (clientSocket.readyState === WebSocket.OPEN) {
-          clientSocket.close(event.code, event.reason);
-        }
+        try {
+          if (clientSocket.readyState === WebSocket.OPEN) {
+            const code = event.code >= 1000 && event.code <= 4999 &&
+                event.code !== 1006
+              ? event.code
+              : 1000;
+            clientSocket.close(code, event.reason || "");
+          }
+        } catch { /* ignore close errors */ }
       };
 
       backendSocket.onerror = () => {
-        if (clientSocket.readyState === WebSocket.OPEN) {
-          clientSocket.close(1011, "Backend connection error");
-        }
+        try {
+          if (clientSocket.readyState === WebSocket.OPEN) {
+            clientSocket.close(1011, "Backend connection error");
+          }
+        } catch { /* ignore */ }
       };
 
-      // If client closes, close backend (propagate close code)
+      // If client closes, close backend
       clientSocket.onclose = (event) => {
-        if (backendSocket.readyState === WebSocket.OPEN) {
-          backendSocket.close(event.code, event.reason);
-        }
+        try {
+          if (backendSocket.readyState === WebSocket.OPEN) {
+            const code = event.code >= 1000 && event.code <= 4999 &&
+                event.code !== 1006
+              ? event.code
+              : 1000;
+            backendSocket.close(code, event.reason || "");
+          }
+        } catch { /* ignore close errors */ }
       };
 
       clientSocket.onerror = () => {
-        if (backendSocket.readyState === WebSocket.OPEN) {
-          backendSocket.close();
-        }
+        try {
+          if (backendSocket.readyState === WebSocket.OPEN) {
+            backendSocket.close();
+          }
+        } catch { /* ignore */ }
       };
     };
 
