@@ -88,15 +88,20 @@ func (h *Handler) HandlePodLogs(w http.ResponseWriter, r *http.Request) {
 			tailLines = v
 		}
 	}
+	if tailLines > 10000 {
+		tailLines = 10000
+	}
 
 	previous := q.Get("previous") == "true"
 	timestamps := q.Get("timestamps") != "false" // default true
+	limitBytes := int64(5 * 1024 * 1024)          // 5 MB max response
 
 	opts := &corev1.PodLogOptions{
 		Container:  container,
 		TailLines:  &tailLines,
 		Previous:   previous,
 		Timestamps: timestamps,
+		LimitBytes: &limitBytes,
 	}
 
 	cs, err := h.impersonatingClient(user)
@@ -114,10 +119,14 @@ func (h *Handler) HandlePodLogs(w http.ResponseWriter, r *http.Request) {
 
 	var lines []string
 	scanner := bufio.NewScanner(stream)
-	// Increase max line size to 1 MB for long log lines
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
+	}
+
+	truncated := false
+	if err := scanner.Err(); err != nil {
+		truncated = true
 	}
 
 	writeData(w, map[string]any{
@@ -126,6 +135,7 @@ func (h *Handler) HandlePodLogs(w http.ResponseWriter, r *http.Request) {
 		"pod":       name,
 		"namespace": ns,
 		"count":     len(lines),
+		"truncated": truncated,
 	})
 }
 

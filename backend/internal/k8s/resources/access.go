@@ -54,6 +54,7 @@ func NewAccessChecker(clientFactory interface {
 
 // CanAccess checks if a user has a specific verb permission on a resource in a namespace.
 // Empty namespace means cluster-scoped check.
+// The resource can include a subresource separated by "/" (e.g., "pods/log", "pods/exec").
 func (ac *AccessChecker) CanAccess(ctx context.Context, username string, groups []string, verb, resource, namespace string) (bool, error) {
 	if ac.alwaysAllow {
 		return true, nil
@@ -82,13 +83,22 @@ func (ac *AccessChecker) CanAccess(ctx context.Context, username string, groups 
 		return false, fmt.Errorf("creating client for access check: %w", err)
 	}
 
+	// Split resource/subresource (e.g., "pods/log" → resource="pods", subresource="log")
+	res := resource
+	subres := ""
+	if idx := strings.Index(resource, "/"); idx > 0 {
+		res = resource[:idx]
+		subres = resource[idx+1:]
+	}
+
 	review := &authorizationv1.SelfSubjectAccessReview{
 		Spec: authorizationv1.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authorizationv1.ResourceAttributes{
-				Namespace: namespace,
-				Verb:      verb,
-				Resource:  resource,
-				Group:     apiGroupForResource(resource),
+				Namespace:   namespace,
+				Verb:        verb,
+				Resource:    res,
+				Subresource: subres,
+				Group:       apiGroupForResource(res),
 			},
 		},
 	}
