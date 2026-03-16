@@ -43,8 +43,9 @@ func NewClusterStore(pool *pgxpool.Pool, encryptionKey string) *ClusterStore {
 // List returns all registered clusters.
 func (s *ClusterStore) List(ctx context.Context) ([]ClusterRecord, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, display_name, api_server_url, auth_type, status, status_message,
-		       k8s_version, node_count, is_local, created_at, updated_at, last_probed_at
+		SELECT id, name, COALESCE(display_name, ''), api_server_url, auth_type, status,
+		       COALESCE(status_message, ''), COALESCE(k8s_version, ''), node_count, is_local,
+		       created_at, updated_at, last_probed_at
 		FROM clusters ORDER BY is_local DESC, name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("listing clusters: %w", err)
@@ -68,8 +69,9 @@ func (s *ClusterStore) List(ctx context.Context) ([]ClusterRecord, error) {
 func (s *ClusterStore) Get(ctx context.Context, id string) (*ClusterRecord, error) {
 	var c ClusterRecord
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, display_name, api_server_url, ca_data, auth_type, auth_data,
-		       status, status_message, k8s_version, node_count, is_local, created_at, updated_at, last_probed_at
+		SELECT id, name, COALESCE(display_name, ''), api_server_url, ca_data, auth_type, auth_data,
+		       status, COALESCE(status_message, ''), COALESCE(k8s_version, ''), node_count, is_local,
+		       created_at, updated_at, last_probed_at
 		FROM clusters WHERE id = $1`, id).Scan(
 		&c.ID, &c.Name, &c.DisplayName, &c.APIServerURL, &c.CAData, &c.AuthType, &c.AuthData,
 		&c.Status, &c.StatusMessage, &c.K8sVersion, &c.NodeCount, &c.IsLocal,

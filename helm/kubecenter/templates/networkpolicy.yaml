@@ -43,6 +43,10 @@ spec:
           protocol: UDP
         - port: 53
           protocol: TCP
+    # PostgreSQL database
+    - ports:
+        - port: 5432
+          protocol: TCP
     # Kubernetes API server (HTTPS), OIDC discovery, Prometheus, Grafana
     - ports:
         - port: 443
