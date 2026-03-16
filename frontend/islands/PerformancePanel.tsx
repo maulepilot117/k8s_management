@@ -321,16 +321,32 @@ interface ChartData {
   error: string | null;
 }
 
+const REFRESH_OPTIONS = [
+  { label: "5s", value: 5_000 },
+  { label: "10s", value: 10_000 },
+  { label: "30s", value: 30_000 },
+  { label: "1m", value: 60_000 },
+  { label: "5m", value: 300_000 },
+  { label: "Off", value: 0 },
+];
+
 export default function PerformancePanel(
   { kind, name, namespace }: PerformancePanelProps,
 ) {
   const charts = useSignal<ChartData[]>([]);
   const monAvailable = useSignal<boolean | null>(null);
+  const refreshInterval = useSignal(30_000);
+  const intervalRef = useSignal<number | undefined>(undefined);
+
+  function startInterval() {
+    if (intervalRef.value) clearInterval(intervalRef.value);
+    if (refreshInterval.value > 0) {
+      intervalRef.value = setInterval(loadMetrics, refreshInterval.value);
+    }
+  }
 
   useEffect(() => {
     if (!IS_BROWSER) return;
-
-    let interval: number | undefined;
 
     // Check monitoring availability, then start auto-refresh
     apiGet<{ prometheus: { available: boolean } }>("/v1/monitoring/status")
@@ -338,8 +354,7 @@ export default function PerformancePanel(
         monAvailable.value = res.data.prometheus.available;
         if (res.data.prometheus.available) {
           loadMetrics();
-          // Auto-refresh every 30 seconds
-          interval = setInterval(loadMetrics, 30_000);
+          startInterval();
         }
       })
       .catch(() => {
@@ -347,7 +362,7 @@ export default function PerformancePanel(
       });
 
     return () => {
-      if (interval) clearInterval(interval);
+      if (intervalRef.value) clearInterval(intervalRef.value);
     };
   }, [kind, name, namespace]);
 
@@ -443,36 +458,67 @@ export default function PerformancePanel(
   }
 
   return (
-    <div class="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
-      {charts.value.map((chart, i) => (
-        <div
-          key={i}
-          class="rounded-lg border border-slate-200 p-4 dark:border-slate-700"
+    <div class="p-4">
+      {/* Refresh interval selector */}
+      <div class="mb-4 flex items-center justify-end gap-2">
+        <svg
+          class="h-4 w-4 text-slate-400"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
         >
-          <h3 class="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-            {chart.title}
-          </h3>
-          {chart.loading
-            ? (
-              <div class="flex h-32 items-center justify-center">
-                <div class="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand" />
-              </div>
-            )
-            : chart.error
-            ? (
-              <div class="flex h-32 items-center justify-center text-sm text-red-400">
-                {chart.error}
-              </div>
-            )
-            : chart.values.length === 0
-            ? (
-              <div class="flex h-32 items-center justify-center text-sm text-slate-400">
-                No data
-              </div>
-            )
-            : <MiniChart values={chart.values} />}
-        </div>
-      ))}
+          <circle cx="8" cy="8" r="6" />
+          <path d="M8 4v4l2.5 1.5" />
+        </svg>
+        <select
+          value={refreshInterval.value}
+          onChange={(e) => {
+            refreshInterval.value = Number(
+              (e.target as HTMLSelectElement).value,
+            );
+            startInterval();
+          }}
+          class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+        >
+          {REFRESH_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {charts.value.map((chart, i) => (
+          <div
+            key={i}
+            class="rounded-lg border border-slate-200 p-4 dark:border-slate-700"
+          >
+            <h3 class="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+              {chart.title}
+            </h3>
+            {chart.loading
+              ? (
+                <div class="flex h-32 items-center justify-center">
+                  <div class="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand" />
+                </div>
+              )
+              : chart.error
+              ? (
+                <div class="flex h-32 items-center justify-center text-sm text-red-400">
+                  {chart.error}
+                </div>
+              )
+              : chart.values.length === 0
+              ? (
+                <div class="flex h-32 items-center justify-center text-sm text-slate-400">
+                  No data
+                </div>
+              )
+              : <MiniChart values={chart.values} />}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
