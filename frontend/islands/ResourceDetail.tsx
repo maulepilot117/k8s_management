@@ -523,19 +523,25 @@ export default function ResourceDetail({
     },
   ];
 
-  // Add Logs tab for pods
-  if (kind === "pods" && resource.value) {
-    const containers: string[] =
-      (resource.value as any)?.spec?.containers?.map((c: any) => c.name) ?? [];
-    if (containers.length > 0 && namespace) {
-      tabs.push({
-        id: "logs",
-        label: "Logs",
-        content: () => (
-          <LogViewer namespace={namespace} pod={name} containers={containers} />
-        ),
-      });
-    }
+  // Add Logs tab for pods (always include — LogViewer handles empty containers)
+  if (kind === "pods" && namespace) {
+    tabs.push({
+      id: "logs",
+      label: "Logs",
+      content: () => {
+        const containers: string[] =
+          (resource.value as any)?.spec?.containers?.map(
+            (c: any) => c.name,
+          ) ?? [];
+        return (
+          <LogViewer
+            namespace={namespace}
+            pod={name}
+            containers={containers.length > 0 ? containers : ["default"]}
+          />
+        );
+      },
+    });
   }
 
   return (
