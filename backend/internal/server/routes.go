@@ -12,10 +12,19 @@ func (s *Server) registerRoutes() {
 	s.Router.Get("/healthz", s.handleHealthz)
 	s.Router.Get("/readyz", s.handleReadyz)
 
-	// WebSocket route — no timeout middleware (long-lived connections).
+	// WebSocket routes — no timeout middleware (long-lived connections).
 	// Auth is handled in-band via the first message, not via middleware.
 	if s.Hub != nil {
 		s.Router.Get("/api/v1/ws/resources", s.handleWSResources)
+	}
+
+	// Pod exec WebSocket — auth via middleware (not in-band), no timeout
+	if s.ResourceHandler != nil {
+		s.Router.Group(func(r chi.Router) {
+			r.Use(middleware.Auth(s.TokenManager))
+			r.Use(middleware.CSRF)
+			r.Get("/api/v1/ws/exec/{namespace}/{name}/{container}", s.ResourceHandler.HandlePodExec)
+		})
 	}
 
 	s.Router.Route("/api/v1", func(r chi.Router) {

@@ -22,6 +22,7 @@ import { stringify } from "yaml";
 import YamlEditor from "@/islands/YamlEditor.tsx";
 import PerformancePanel from "@/islands/PerformancePanel.tsx";
 import LogViewer from "@/islands/LogViewer.tsx";
+import PodExec from "@/islands/PodExec.tsx";
 import RelatedPods from "@/islands/RelatedPods.tsx";
 
 interface ResourceDetailProps {
@@ -554,7 +555,7 @@ export default function ResourceDetail({
     });
   }
 
-  // Add Logs tab for pods
+  // Add Logs and Exec tabs for pods
   if (kind === "pods" && namespace && IS_BROWSER) {
     tabDefs.push({
       id: "logs",
@@ -569,6 +570,24 @@ export default function ResourceDetail({
           <LogViewer
             namespace={namespace}
             pod={name}
+            containers={containers.length > 0 ? containers : ["default"]}
+          />
+        );
+      },
+    });
+    tabDefs.push({
+      id: "exec",
+      label: "Exec",
+      content: () => {
+        // deno-lint-ignore no-explicit-any
+        const res = resource.value as any;
+        const containers: string[] =
+          // deno-lint-ignore no-explicit-any
+          res?.spec?.containers?.map((c: any) => c.name) ?? [];
+        return (
+          <PodExec
+            namespace={namespace}
+            name={name}
             containers={containers.length > 0 ? containers : ["default"]}
           />
         );
