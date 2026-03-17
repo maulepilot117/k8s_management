@@ -6,22 +6,29 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kubecenter/kubecenter/internal/audit"
 	"github.com/kubecenter/kubecenter/internal/httputil"
 	"github.com/kubecenter/kubecenter/internal/k8s"
+	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// k8sNameRegexp validates RFC 1123 DNS label names.
+var k8sNameRegexp = regexp.MustCompile(`^[a-z0-9]([a-z0-9.\-]{0,251}[a-z0-9])?$`)
 
 // Handler serves networking-related HTTP endpoints.
 type Handler struct {
-	K8sClient   *k8s.ClientFactory
-	Detector    *Detector
-	AuditLogger audit.Logger
-	Logger      *slog.Logger
-	ClusterID   string
+	K8sClient    *k8s.ClientFactory
+	Detector     *Detector
+	HubbleClient *HubbleClient
+	AuditLogger  audit.Logger
+	Logger       *slog.Logger
+	ClusterID    string
 }
 
 // HandleCNIStatus returns the detected CNI plugin information.
@@ -175,6 +182,72 @@ func (h *Handler) HandleUpdateCNIConfig(w http.ResponseWriter, r *http.Request) 
 
 	// Refresh cached CNI features asynchronously (non-blocking)
 	go h.Detector.Detect(context.Background())
+}
+
+// HandleHubbleFlows returns network flows from Hubble Relay filtered by namespace and verdict.
+// GET /api/v1/networking/hubble/flows?namespace=default&verdict=DROPPED&limit=100
+func (h *Handler) HandleHubbleFlows(w http.ResponseWriter, r *http.Request) {
+	user, ok := httputil.RequireUser(w, r)
+	if !ok {
+		return
+	}
+
+	if h.HubbleClient == nil {
+		httputil.WriteError(w, http.StatusServiceUnavailable, "Hubble is not available", "")
+		return
+	}
+
+	namespace := r.URL.Query().Get("namespace")
+	if namespace == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "namespace parameter is required", "")
+		return
+	}
+	// Validate namespace against k8s naming rules
+	if !k8sNameRegexp.MatchString(namespace) {
+		httputil.WriteError(w, http.StatusBadRequest, "invalid namespace name", "")
+		return
+	}
+
+	// Validate verdict filter
+	verdict := r.URL.Query().Get("verdict")
+	if verdict != "" && !ValidVerdict(verdict) {
+		httputil.WriteError(w, http.StatusBadRequest,
+			"invalid verdict filter, must be one of: FORWARDED, DROPPED, ERROR, AUDIT", "")
+		return
+	}
+
+	// Validate limit
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		v, err := strconv.Atoi(l)
+		if err != nil || v < 1 || v > 1000 {
+			httputil.WriteError(w, http.StatusBadRequest, "limit must be between 1 and 1000", "")
+			return
+		}
+		limit = v
+	}
+
+	// RBAC: check user can get pods in the requested namespace (flow visibility = pod observability)
+	cs, err := h.K8sClient.ClientForUser(user.KubernetesUsername, user.KubernetesGroups)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to check permissions", "")
+		return
+	}
+	_, err = cs.CoreV1().Pods(namespace).List(r.Context(), k8smetav1.ListOptions{Limit: 1})
+	if err != nil {
+		httputil.WriteError(w, http.StatusForbidden,
+			"you do not have permission to view flows in namespace "+namespace, "")
+		return
+	}
+
+	flows, err := h.HubbleClient.GetFlows(r.Context(), namespace, verdict, limit)
+	if err != nil {
+		h.Logger.Error("hubble flow query failed", "error", err, "namespace", namespace)
+		httputil.WriteError(w, http.StatusBadGateway, "failed to query Hubble flows", "")
+		return
+	}
+
+	httputil.WriteData(w, flows)
 }
 
 // formatChangedKeys returns a sorted, comma-separated list of changed key names for audit logging.
