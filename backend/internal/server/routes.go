@@ -163,13 +163,7 @@ func (s *Server) registerWizardRoutes(ar chi.Router) {
 func (s *Server) registerMonitoringRoutes(ar chi.Router) {
 	h := s.MonitoringHandler
 	ar.Route("/monitoring", func(mr chi.Router) {
-		// Share YAML rate limiter (30 req/min) for monitoring endpoints
-		yamlRL := s.YAMLRateLimiter
-		if yamlRL == nil {
-			yamlRL = s.RateLimiter
-		}
-		mr.Use(middleware.RateLimit(yamlRL))
-
+		// No rate limit on monitoring — read-only, behind auth, Prometheus handles load
 		mr.Get("/status", h.HandleStatus)
 		mr.Post("/rediscover", h.HandleRediscover)
 		mr.Get("/query", h.HandleQuery)
