@@ -212,25 +212,14 @@ func (h *Handler) HandleCreateCiliumPolicy(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Audit log with policy summary
-	detail := policySummary(&req)
-	h.AuditLogger.Log(r.Context(), audit.Entry{
-		Timestamp:         timeNow(),
-		ClusterID:         h.ClusterID,
-		User:              user.Username,
-		SourceIP:          r.RemoteAddr,
-		Action:            audit.ActionCreate,
-		ResourceKind:      "CiliumNetworkPolicy",
-		ResourceNamespace: ns,
-		ResourceName:      created.GetName(),
-		Result:            audit.ResultSuccess,
-		Detail:            detail,
-	})
+	h.auditWrite(r, user, audit.ActionCreate, "CiliumNetworkPolicy", ns, created.GetName(), audit.ResultSuccess)
 
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"data":     created,
-		"warnings": warnings,
-	})
+	// Return created resource with warnings inside standard envelope data field
+	result := map[string]any{"resource": created.Object}
+	if len(warnings) > 0 {
+		result["warnings"] = warnings
+	}
+	writeCreated(w, result)
 }
 
 // validateCiliumPolicy validates all fields of a CiliumPolicyRequest.
@@ -247,6 +236,12 @@ func validateCiliumPolicy(req *CiliumPolicyRequest) []string {
 	// Label validation
 	if err := validateLabels(req.EndpointSelector); err != "" {
 		errs = append(errs, "endpointSelector: "+err)
+	}
+
+	// Rule count bounds
+	if len(req.IngressRules)+len(req.EgressRules) > 100 {
+		errs = append(errs, "too many rules (max 100 total)")
+		return errs
 	}
 
 	// Rule validation
@@ -275,16 +270,24 @@ func validateRule(rule *PolicyRule) []string {
 	// PeerType
 	switch rule.PeerType {
 	case "endpoints":
-		if err := validateLabels(rule.Labels); err != "" {
+		if len(rule.Labels) > 20 {
+			errs = append(errs, "too many labels per rule (max 20)")
+		} else if err := validateLabels(rule.Labels); err != "" {
 			errs = append(errs, "labels: "+err)
 		}
 	case "entities":
+		if len(rule.Entities) > len(validEntities) {
+			errs = append(errs, fmt.Sprintf("too many entities (max %d)", len(validEntities)))
+		}
 		for _, e := range rule.Entities {
 			if !validEntities[e] {
 				errs = append(errs, fmt.Sprintf("invalid entity %q", e))
 			}
 		}
 	case "cidr":
+		if len(rule.CIDRs) > 50 {
+			errs = append(errs, "too many CIDRs per rule (max 50)")
+		}
 		for _, c := range rule.CIDRs {
 			if err := validateCIDR(c); err != "" {
 				errs = append(errs, err)
@@ -295,6 +298,9 @@ func validateRule(rule *PolicyRule) []string {
 	}
 
 	// Ports
+	if len(rule.Ports) > 100 {
+		errs = append(errs, "too many ports per rule (max 100)")
+	}
 	for _, p := range rule.Ports {
 		if p.Port < 1 || p.Port > 65535 {
 			errs = append(errs, fmt.Sprintf("port %d out of range 1-65535", p.Port))
@@ -502,17 +508,3 @@ func toAnySlice(s []string) []any {
 	return result
 }
 
-// policySummary returns a human-readable summary for audit logging.
-func policySummary(req *CiliumPolicyRequest) string {
-	parts := []string{fmt.Sprintf("policy=%s/%s", req.Namespace, req.Name)}
-	if len(req.EndpointSelector) > 0 {
-		labels := make([]string, 0, len(req.EndpointSelector))
-		for k, v := range req.EndpointSelector {
-			labels = append(labels, k+"="+v)
-		}
-		parts = append(parts, "selector="+strings.Join(labels, ","))
-	}
-	parts = append(parts, fmt.Sprintf("ingress=%d", len(req.IngressRules)))
-	parts = append(parts, fmt.Sprintf("egress=%d", len(req.EgressRules)))
-	return strings.Join(parts, " ")
-}

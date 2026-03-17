@@ -160,13 +160,18 @@ export default function CiliumPolicyEditor() {
         rules.value,
       );
       const resp = await apiPost<
-        { data: unknown; warnings?: PolicyWarning[] }
+        { resource: unknown; warnings?: PolicyWarning[] }
       >(
         `/v1/resources/ciliumnetworkpolicies/${namespace.value}`,
         payload,
       );
-      if (resp.warnings && resp.warnings.length > 0) {
-        warnings.value = resp.warnings;
+      if (resp.data && typeof resp.data === "object") {
+        const data = resp.data as {
+          warnings?: PolicyWarning[];
+        };
+        if (data.warnings && data.warnings.length > 0) {
+          warnings.value = data.warnings;
+        }
       }
       submitSuccess.value = true;
     } catch (err: unknown) {
@@ -674,6 +679,19 @@ function buildPayload(
   return { name, namespace, endpointSelector, ingressRules, egressRules };
 }
 
+// Escape a string for safe inclusion in YAML output.
+function yamlEscape(s: string): string {
+  if (
+    /[":{}[\],&*?|<>=!%@`#\n\r\t\\]/.test(s) || s.trim() !== s || s === ""
+  ) {
+    return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(
+      /\n/g,
+      "\\n",
+    ) + '"';
+  }
+  return s;
+}
+
 // Generate a YAML preview string from the form state.
 function buildPolicyYaml(
   name: string,
@@ -696,7 +714,7 @@ function buildPolicyYaml(
     lines.push("  endpointSelector:");
     lines.push("    matchLabels:");
     for (const l of activeLabels) {
-      lines.push(`      ${l.key}: "${l.value}"`);
+      lines.push(`      ${yamlEscape(l.key)}: ${yamlEscape(l.value)}`);
     }
   } else {
     lines.push("  endpointSelector: {}");
@@ -746,7 +764,7 @@ function peerYaml(rule: RuleRow, prefix: string): string {
     const activeLabels = rule.labels.filter((l) => l.key.trim());
     if (activeLabels.length === 0) return `${prefix}Endpoints:\n    - {}`;
     const labelLines = activeLabels.map((l) =>
-      `          ${l.key}: "${l.value}"`
+      `          ${yamlEscape(l.key)}: ${yamlEscape(l.value)}`
     )
       .join("\n");
     return `${prefix}Endpoints:\n    - matchLabels:\n${labelLines}`;
