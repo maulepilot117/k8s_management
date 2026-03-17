@@ -34,6 +34,9 @@ type UserStore interface {
 	GetByUsername(ctx context.Context, username string) (*UserRecord, error)
 	GetByID(ctx context.Context, id string) (*UserRecord, error)
 	Count(ctx context.Context) (int, error)
+	List(ctx context.Context) ([]UserRecord, error)
+	Delete(ctx context.Context, id string) error
+	UpdatePassword(ctx context.Context, id, passwordPHC string) error
 }
 
 // UserRecord is the database representation of a local user.

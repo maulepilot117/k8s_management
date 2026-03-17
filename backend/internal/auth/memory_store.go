@@ -67,3 +67,38 @@ func (m *MemoryUserStore) Count(_ context.Context) (int, error) {
 	defer m.mu.RUnlock()
 	return len(m.users), nil
 }
+
+func (m *MemoryUserStore) List(_ context.Context) ([]UserRecord, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]UserRecord, 0, len(m.users))
+	for _, u := range m.users {
+		result = append(result, u)
+	}
+	return result, nil
+}
+
+func (m *MemoryUserStore) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.byID[id]
+	if !ok {
+		return ErrUserNotFound
+	}
+	delete(m.users, u.Username)
+	delete(m.byID, id)
+	return nil
+}
+
+func (m *MemoryUserStore) UpdatePassword(_ context.Context, id, passwordPHC string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.byID[id]
+	if !ok {
+		return ErrUserNotFound
+	}
+	u.PasswordPHC = passwordPHC
+	m.byID[id] = u
+	m.users[u.Username] = u
+	return nil
+}

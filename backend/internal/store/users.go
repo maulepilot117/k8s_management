@@ -112,6 +112,51 @@ func (s *UserStore) GetByID(ctx context.Context, id string) (*auth.UserRecord, e
 	return &u, nil
 }
 
+// List returns all local users (without password data).
+func (s *UserStore) List(ctx context.Context) ([]auth.UserRecord, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, username, password_phc, k8s_username, k8s_groups, roles
+		FROM local_users ORDER BY username ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("listing users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []auth.UserRecord
+	for rows.Next() {
+		var u auth.UserRecord
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordPHC, &u.K8sUsername, &u.K8sGroups, &u.Roles); err != nil {
+			return nil, fmt.Errorf("scanning user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// Delete removes a local user by ID.
+func (s *UserStore) Delete(ctx context.Context, id string) error {
+	result, err := s.pool.Exec(ctx, `DELETE FROM local_users WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("deleting user: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return auth.ErrUserNotFound
+	}
+	return nil
+}
+
+// UpdatePassword updates a user's password hash.
+func (s *UserStore) UpdatePassword(ctx context.Context, id, passwordPHC string) error {
+	result, err := s.pool.Exec(ctx, `UPDATE local_users SET password_phc = $2 WHERE id = $1`, id, passwordPHC)
+	if err != nil {
+		return fmt.Errorf("updating password: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return auth.ErrUserNotFound
+	}
+	return nil
+}
+
 // Count returns the number of local users.
 func (s *UserStore) Count(ctx context.Context) (int, error) {
 	var count int
