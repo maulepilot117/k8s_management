@@ -1,7 +1,10 @@
 import { useSignal } from "@preact/signals";
+import { useEffect } from "preact/hooks";
+import { IS_BROWSER } from "fresh/runtime";
 import { NAV_SECTIONS } from "@/lib/constants.ts";
 import { ResourceIcon } from "@/components/k8s/ResourceIcon.tsx";
 import { Logo } from "@/components/ui/Logo.tsx";
+import { apiGet } from "@/lib/api.ts";
 
 interface SidebarProps {
   currentPath: string;
@@ -9,6 +12,18 @@ interface SidebarProps {
 
 export default function Sidebar({ currentPath }: SidebarProps) {
   const collapsed = useSignal<Record<string, boolean>>({});
+  const appVersion = useSignal("...");
+
+  useEffect(() => {
+    if (!IS_BROWSER) return;
+    apiGet<{
+      kubecenter?: { version?: string };
+    }>("/v1/cluster/info").then((res) => {
+      if (res.ok && res.value?.data?.kubecenter?.version) {
+        appVersion.value = res.value.data.kubecenter.version;
+      }
+    });
+  }, []);
 
   function toggleSection(title: string) {
     collapsed.value = {
@@ -81,7 +96,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
 
       {/* Version */}
       <div class="border-t border-slate-700 px-4 py-2 text-xs text-slate-500">
-        k8sCenter v0.1.0
+        k8sCenter {appVersion.value}
       </div>
     </aside>
   );

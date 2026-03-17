@@ -66,6 +66,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for git describe
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -83,7 +85,10 @@ jobs:
       - name: Generate version tag
         id: version
         run: |
+          # Use git tag if available, otherwise fall back to sha
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "commit=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
@@ -99,7 +104,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/k8scenter-backend:${{ steps.version.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/k8scenter-backend:latest
           build-args: |
-            VERSION=${{ steps.version.outputs.tag }}
+            VERSION=${{ steps.version.outputs.version }}
             COMMIT=${{ steps.version.outputs.commit }}
             BUILD_DATE=${{ steps.version.outputs.date }}
           cache-from: type=gha,scope=backend
