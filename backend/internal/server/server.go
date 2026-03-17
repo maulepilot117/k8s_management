@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -52,6 +53,7 @@ type Server struct {
 	Hub                *websocket.Hub
 	WebhookRateLimiter *middleware.RateLimiter
 	ready              func() bool
+	dbPing             func(context.Context) error // PostgreSQL health check (nil if no DB)
 }
 
 // Deps holds all dependencies needed to create a Server.
@@ -79,6 +81,7 @@ type Deps struct {
 	WebhookRateLimiter *middleware.RateLimiter
 	AccessChecker      *resources.AccessChecker
 	ReadyFn            func() bool
+	DBPing             func(context.Context) error // nil if no database
 }
 
 // New creates a configured HTTP server with middleware and routes.
@@ -102,6 +105,7 @@ func New(deps Deps) *Server {
 		YAMLRateLimiter: deps.YAMLRateLimiter,
 		Hub:             deps.Hub,
 		ready:        deps.ReadyFn,
+		dbPing:       deps.DBPing,
 	}
 
 	// Build resource handler if k8s dependencies are available (not in auth-only tests)

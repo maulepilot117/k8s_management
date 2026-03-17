@@ -109,6 +109,7 @@ func main() {
 	var clusterStore *appstore.ClusterStore
 	var settingsService *appstore.SettingsService
 	var userStore *appstore.UserStore
+	var dbPing func(context.Context) error
 	if cfg.Database.URL != "" {
 		db, err := appstore.New(ctx, cfg.Database.URL, int32(cfg.Database.MaxConns), int32(cfg.Database.MinConns), logger)
 		if err != nil {
@@ -121,6 +122,7 @@ func main() {
 			logger.Info("audit logging to PostgreSQL", "retentionDays", cfg.Audit.RetentionDays)
 
 			// Initialize settings, user, and cluster stores
+			dbPing = db.Ping
 			userStore = appstore.NewUserStore(db.Pool)
 			settingsService = appstore.NewSettingsService(db.Pool)
 			encKey := cfg.Database.EncryptionKey
@@ -306,6 +308,7 @@ func main() {
 		WebhookRateLimiter: webhookRateLimiter,
 		AccessChecker:      accessChecker,
 		ReadyFn:            ready.Load,
+		DBPing:             dbPing,
 	})
 	httpServer := srv.HTTPServer()
 
