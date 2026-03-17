@@ -1,6 +1,6 @@
 import { Input } from "@/components/ui/Input.tsx";
 import { KeyValueListEditor } from "@/components/ui/KeyValueListEditor.tsx";
-import { Select } from "@/components/ui/Select.tsx";
+import { NamespaceSelect } from "@/components/ui/NamespaceSelect.tsx";
 import type { LabelEntry } from "@/lib/wizard-types.ts";
 
 interface DeploymentBasicsProps {
@@ -12,6 +12,7 @@ interface DeploymentBasicsProps {
   namespaces: string[];
   errors: Record<string, string>;
   onChange: (field: string, value: unknown) => void;
+  onNamespaceCreated?: (ns: string) => void;
 }
 
 export function DeploymentBasicsStep({
@@ -23,9 +24,8 @@ export function DeploymentBasicsStep({
   namespaces,
   errors,
   onChange,
+  onNamespaceCreated,
 }: DeploymentBasicsProps) {
-  const nsOptions = namespaces.map((ns) => ({ value: ns, label: ns }));
-
   const updateLabel = (index: number, field: "key" | "value", val: string) => {
     const updated = [...labels];
     updated[index] = { ...updated[index], [field]: val };
@@ -51,13 +51,12 @@ export function DeploymentBasicsStep({
         required
       />
 
-      <Select
-        label="Namespace"
+      <NamespaceSelect
         value={namespace}
-        onChange={(e) =>
-          onChange("namespace", (e.target as HTMLSelectElement).value)}
-        options={nsOptions}
+        namespaces={namespaces}
         error={errors.namespace}
+        onChange={(ns) => onChange("namespace", ns)}
+        onNamespaceCreated={onNamespaceCreated}
       />
 
       <Input
