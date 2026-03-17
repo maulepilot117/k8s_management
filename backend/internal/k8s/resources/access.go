@@ -193,6 +193,8 @@ func apiGroupForResource(resource string) string {
 		return "rbac.authorization.k8s.io"
 	case "prometheusrules", "servicemonitors", "podmonitors", "alertmanagerconfigs":
 		return "monitoring.coreos.com"
+	case "ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies": // clusterwide prepared for future use
+		return "cilium.io"
 	default:
 		return "" // core API group
 	}
