@@ -272,6 +272,11 @@ export default function ServiceWizard() {
             namespaces={namespaces.value}
             errors={errors.value}
             onChange={updateField}
+            onNamespaceCreated={(ns) => {
+              if (!namespaces.value.includes(ns)) {
+                namespaces.value = [...namespaces.value, ns].sort();
+              }
+            }}
           />
         )}
 
