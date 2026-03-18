@@ -21,9 +21,11 @@ export default function Sidebar({ currentPath }: SidebarProps) {
     apiGet<{
       kubecenter?: { version?: string };
     }>("/v1/cluster/info").then((res) => {
-      if (res.ok && res.value?.data?.kubecenter?.version) {
-        appVersion.value = res.value.data.kubecenter.version;
+      if (res.data?.kubecenter?.version) {
+        appVersion.value = res.data.kubecenter.version;
       }
+    }).catch(() => {
+      // Ignore — version display is best-effort
     });
   }, [isAuthenticated.value]);
 
