@@ -8,6 +8,7 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,15 +44,40 @@ func New(ctx context.Context, connString string, maxConns, minConns int32, logge
 		config.MinConns = 2
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		return nil, fmt.Errorf("creating connection pool: %w", err)
-	}
+	// Retry connection with backoff — PostgreSQL may still be starting
+	var pool *pgxpool.Pool
+	const maxRetries = 10
+	for attempt := range maxRetries {
+		pool, err = pgxpool.NewWithConfig(ctx, config)
+		if err != nil {
+			if attempt < maxRetries-1 {
+				delay := time.Duration(attempt+1) * 2 * time.Second
+				logger.Warn("database connection failed, retrying", "attempt", attempt+1, "delay", delay, "error", err)
+				select {
+				case <-time.After(delay):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return nil, fmt.Errorf("creating connection pool: %w", err)
+		}
 
-	// Verify connectivity
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("database ping failed: %w", err)
+		if err := pool.Ping(ctx); err != nil {
+			pool.Close()
+			if attempt < maxRetries-1 {
+				delay := time.Duration(attempt+1) * 2 * time.Second
+				logger.Warn("database ping failed, retrying", "attempt", attempt+1, "delay", delay, "error", err)
+				select {
+				case <-time.After(delay):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return nil, fmt.Errorf("database ping failed: %w", err)
+		}
+		break // connected successfully
 	}
 
 	db := &DB{Pool: pool, logger: logger}

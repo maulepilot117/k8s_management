@@ -30,6 +30,33 @@ spec:
         fsGroup: 65534
         seccompProfile:
           type: RuntimeDefault
+      {{- if or .Values.postgresql.enabled .Values.externalDatabase.host }}
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.37
+          command: ['sh', '-c']
+          args:
+            - |
+              {{- if .Values.postgresql.enabled }}
+              HOST="{{ .Release.Name }}-postgresql"
+              {{- else }}
+              HOST="{{ .Values.externalDatabase.host }}"
+              {{- end }}
+              PORT={{ .Values.externalDatabase.port | default 5432 }}
+              echo "Waiting for PostgreSQL at $HOST:$PORT..."
+              until nc -z -w2 "$HOST" "$PORT"; do
+                echo "PostgreSQL not ready, retrying in 2s..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop: ["ALL"]
+      {{- end }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
