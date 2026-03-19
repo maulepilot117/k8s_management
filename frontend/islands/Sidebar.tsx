@@ -31,7 +31,10 @@ export default function Sidebar({ currentPath }: SidebarProps) {
   // Save scroll position on every scroll
   const onNavScroll = useCallback(() => {
     if (navRef.current) {
-      sessionStorage.setItem("sidebar-scroll", String(navRef.current.scrollTop));
+      sessionStorage.setItem(
+        "sidebar-scroll",
+        String(navRef.current.scrollTop),
+      );
     }
   }, []);
 
@@ -95,7 +98,11 @@ export default function Sidebar({ currentPath }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav ref={navRef} onScroll={onNavScroll} class="flex-1 overflow-y-auto py-2">
+      <nav
+        ref={navRef}
+        onScroll={onNavScroll}
+        class="flex-1 overflow-y-auto py-2"
+      >
         {NAV_SECTIONS.filter((section) =>
           // Hide "Settings" section for non-admin users
           section.title !== "Settings" || userIsAdmin.value
