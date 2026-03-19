@@ -78,6 +78,11 @@ func main() {
 	accessChecker.StartCacheSweeper(ctx)
 	hub := websocket.NewHub(logger, accessChecker)
 
+	// Register dynamic CRD kinds for WebSocket subscriptions (only if CRD detected)
+	if informerMgr.CiliumNetworkPolicies() != nil {
+		websocket.RegisterAllowedKind("ciliumnetworkpolicies")
+	}
+
 	// Register informer event handlers BEFORE starting informers
 	informerMgr.RegisterEventHandlers(hub.HandleEvent)
 

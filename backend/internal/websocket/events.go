@@ -85,7 +85,12 @@ var allowedKinds = map[string]bool{
 	"alerts":                              true,
 	"validatingwebhookconfigurations":      true,
 	"mutatingwebhookconfigurations":        true,
-	"ciliumnetworkpolicies":                true,
+}
+
+// RegisterAllowedKind dynamically adds a kind to the subscription allowlist.
+// Used for CRD-backed resources that are only available when the CRD is installed.
+func RegisterAllowedKind(kind string) {
+	allowedKinds[kind] = true
 }
 
 // isAllowedKind returns true if the kind is in the subscription allowlist.
