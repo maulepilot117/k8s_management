@@ -129,9 +129,9 @@ export async function api<T>(
     );
   }
 
-  // 204 No Content has no body — return empty response instead of failing on res.json()
+  // 204 No Content has no body — return empty envelope instead of failing on res.json()
   if (res.status === 204) {
-    return {} as APIResponse<T>;
+    return { data: undefined as unknown as T } as APIResponse<T>;
   }
 
   return await res.json();
@@ -152,8 +152,9 @@ export const apiPut = <T>(path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
-export const apiDelete = <T>(path: string) =>
-  api<T>(path, { method: "DELETE" });
+export async function apiDelete(path: string): Promise<void> {
+  await api<unknown>(path, { method: "DELETE" });
+}
 
 /** POST with a raw string body (e.g., YAML content). */
 export const apiPostRaw = <T>(

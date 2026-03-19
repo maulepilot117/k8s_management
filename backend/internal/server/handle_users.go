@@ -49,7 +49,11 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Guard: no deleting the last admin
+	// Guard: no deleting the last admin.
+	// NOTE: This list-then-delete is not transactional. Under concurrent admin
+	// sessions, a TOCTOU race could allow deleting the last admin. Acceptable
+	// for current single-admin usage; use SELECT ... FOR UPDATE if this becomes
+	// a concern (see CreateFirstUser in store/users.go for the pattern).
 	users, err := s.LocalAuth.Store().List(r.Context())
 	if err != nil {
 		s.Logger.Error("failed to list users for admin guard", "error", err)
@@ -112,6 +116,7 @@ func (s *Server) handleUpdateUserPassword(w http.ResponseWriter, r *http.Request
 
 	id := chi.URLParam(r, "id")
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1024) // 1 KB — generous for a password change
 	var req struct {
 		Password string `json:"password"`
 	}

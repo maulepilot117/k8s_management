@@ -304,7 +304,7 @@ function PasswordDialog({
     };
     globalThis.addEventListener("keydown", handler);
     return () => globalThis.removeEventListener("keydown", handler);
-  }, []);
+  }, [onCancel]);
 
   return (
     <div

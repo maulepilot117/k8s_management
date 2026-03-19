@@ -49,7 +49,7 @@ export function ConfirmDialog({
     }
 
     return () => globalThis.removeEventListener("keydown", handler);
-  }, []);
+  }, [onCancel]);
 
   return (
     <div
