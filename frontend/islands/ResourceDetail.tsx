@@ -1,8 +1,18 @@
-import { useSignal } from "@preact/signals";
+import { useComputed, useSignal } from "@preact/signals";
 import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import { IS_BROWSER } from "fresh/runtime";
 import { apiGet, apiPostRaw } from "@/lib/api.ts";
 import { RESOURCE_API_KINDS, RESOURCE_DETAIL_PATHS } from "@/lib/constants.ts";
+import {
+  type ActionId,
+  ACTIONS_BY_KIND,
+  executeAction,
+  getActionMeta,
+  getVisibleActions,
+} from "@/lib/action-handlers.ts";
+import { useAuth } from "@/lib/auth.ts";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog.tsx";
+import { useToast } from "@/components/ui/Toast.tsx";
 import {
   EVENT_DELETED,
   EVENT_MODIFIED,
@@ -73,6 +83,72 @@ export default function ResourceDetail({
   const yamlApplyError = useSignal<string | null>(null);
   const yamlApplySuccess = useSignal(false);
   const isSecret = kind === "secrets";
+
+  // Action buttons state
+  const { rbac } = useAuth();
+  const { showToast } = useToast();
+  const actionLoading = useSignal(false);
+  const confirmAction = useSignal<
+    {
+      actionId: ActionId;
+      params?: Record<string, unknown>;
+    } | null
+  >(null);
+  const scaleTarget = useSignal(false);
+  const scaleValue = useSignal(1);
+
+  const actions = useComputed(() =>
+    getVisibleActions(kind, namespace ?? "", rbac.value)
+  );
+
+  const runAction = async (
+    actionId: ActionId,
+    params?: Record<string, unknown>,
+  ) => {
+    if (actionLoading.value) return;
+    actionLoading.value = true;
+    try {
+      const message = await executeAction(
+        actionId,
+        kind,
+        namespace ?? "",
+        name,
+        params,
+      );
+      showToast(message, "success");
+      confirmAction.value = null;
+      scaleTarget.value = false;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Action failed";
+      showToast(msg, "error");
+    } finally {
+      actionLoading.value = false;
+    }
+  };
+
+  const handleAction = (actionId: ActionId) => {
+    if (actionLoading.value || !resource.value) return;
+    const meta = getActionMeta(actionId, resource.value);
+
+    if (actionId === "scale") {
+      const spec = resource.value.spec as { replicas?: number } | undefined;
+      scaleValue.value = spec?.replicas ?? 1;
+      scaleTarget.value = true;
+      return;
+    }
+
+    if (meta.confirm) {
+      let params: Record<string, unknown> | undefined;
+      if (actionId === "suspend") {
+        const spec = resource.value.spec as { suspend?: boolean } | undefined;
+        params = { suspend: !spec?.suspend };
+      }
+      confirmAction.value = { actionId, params };
+      return;
+    }
+
+    runAction(actionId);
+  };
 
   // Dirty state navigation guard (D9)
   // Uses a ref to track latest yamlContent so the handler always has current state,
@@ -638,6 +714,29 @@ export default function ResourceDetail({
             )}
           </div>
         </div>
+        {/* Action buttons */}
+        {resource.value && actions.value.length > 0 && (
+          <div class="flex items-center gap-2">
+            {actions.value.map((actionId) => {
+              const meta = getActionMeta(actionId, resource.value!);
+              return (
+                <button
+                  key={actionId}
+                  type="button"
+                  onClick={() => handleAction(actionId)}
+                  disabled={actionLoading.value}
+                  class={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    meta.danger
+                      ? "border border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                      : "border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                  } disabled:opacity-50`}
+                >
+                  {meta.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Error state */}
@@ -651,6 +750,62 @@ export default function ResourceDetail({
           onTabChange={handleTabChange}
         />
       </div>
+
+      {/* Confirm dialog */}
+      {confirmAction.value && resource.value && (() => {
+        const meta = getActionMeta(
+          confirmAction.value!.actionId,
+          resource.value!,
+        );
+        const isDestructive = meta.confirm === "destructive";
+        return (
+          <ConfirmDialog
+            title={`${meta.label} ${name}`}
+            message={meta.confirmMessage}
+            confirmLabel={meta.label}
+            danger={meta.danger}
+            typeToConfirm={isDestructive ? name : undefined}
+            onConfirm={() =>
+              runAction(
+                confirmAction.value!.actionId,
+                confirmAction.value!.params,
+              )}
+            onCancel={() => {
+              confirmAction.value = null;
+            }}
+          />
+        );
+      })()}
+
+      {/* Scale dialog */}
+      {scaleTarget.value && (
+        <ConfirmDialog
+          title={`Scale ${name}`}
+          message={
+            <div class="space-y-3">
+              <p>Set the number of replicas:</p>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={scaleValue.value}
+                onInput={(e) => {
+                  scaleValue.value = parseInt(
+                    (e.target as HTMLInputElement).value,
+                    10,
+                  );
+                }}
+                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+              />
+            </div>
+          }
+          confirmLabel="Scale"
+          onConfirm={() => runAction("scale", { replicas: scaleValue.value })}
+          onCancel={() => {
+            scaleTarget.value = false;
+          }}
+        />
+      )}
     </div>
   );
 }
