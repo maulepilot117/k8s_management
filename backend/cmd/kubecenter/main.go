@@ -73,7 +73,7 @@ func main() {
 
 	// Create informer manager and WebSocket hub
 	baseCS := k8sClient.BaseClientset()
-	informerMgr := k8s.NewInformerManager(baseCS, logger)
+	informerMgr := k8s.NewInformerManager(baseCS, k8sClient.BaseDynamicClient(), k8sClient.DiscoveryClient(), logger)
 	accessChecker := resources.NewAccessChecker(k8sClient, logger)
 	accessChecker.StartCacheSweeper(ctx)
 	hub := websocket.NewHub(logger, accessChecker)

@@ -85,6 +85,7 @@ var allowedKinds = map[string]bool{
 	"alerts":                              true,
 	"validatingwebhookconfigurations":      true,
 	"mutatingwebhookconfigurations":        true,
+	"ciliumnetworkpolicies":                true,
 }
 
 // isAllowedKind returns true if the kind is in the subscription allowlist.
