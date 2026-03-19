@@ -103,6 +103,8 @@ func (h *Handler) HandleListCiliumPolicies(w http.ResponseWriter, r *http.Reques
 	for _, obj := range objs {
 		if u, ok := obj.(*unstructured.Unstructured); ok {
 			items = append(items, u)
+		} else {
+			h.Logger.Warn("unexpected object type in CiliumNetworkPolicy lister", "type", fmt.Sprintf("%T", obj))
 		}
 	}
 

@@ -423,16 +423,19 @@ func (m *InformerManager) RegisterEventHandlers(cb EventCallback) {
 	m.logger.Info("informer event handlers registered", "kinds", len(specs))
 }
 
-// emitEvent extracts metadata from a k8s object and invokes the callback.
+// emitEvent deep-copies a k8s object and invokes the callback with its metadata.
+// Metadata is read AFTER deep copy to avoid races with the informer cache —
+// particularly important for *unstructured.Unstructured where GetNamespace/GetName
+// traverse a mutable map[string]interface{}.
 func (m *InformerManager) emitEvent(cb EventCallback, eventType, kind string, obj interface{}) {
+	// Deep copy first to avoid data races with informer cache
+	if copier, ok := obj.(runtime.Object); ok {
+		obj = copier.DeepCopyObject()
+	}
 	meta, ok := obj.(metav1.Object)
 	if !ok {
 		m.logger.Warn("event object does not implement metav1.Object", "kind", kind)
 		return
-	}
-	// Deep copy to avoid data races with informer cache
-	if copier, ok := obj.(runtime.Object); ok {
-		obj = copier.DeepCopyObject()
 	}
 	cb(eventType, kind, meta.GetNamespace(), meta.GetName(), obj)
 }
