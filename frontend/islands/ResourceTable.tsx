@@ -632,13 +632,11 @@ export default function ResourceTable({
                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
               />
               <p class="mt-1 text-xs text-slate-500">
-                Current: {
-                  (
-                    scaleTarget.value.spec as
-                      | { replicas?: number }
-                      | undefined
-                  )?.replicas ?? "?"
-                }
+                Current: {(
+                  scaleTarget.value.spec as
+                    | { replicas?: number }
+                    | undefined
+                )?.replicas ?? "?"}
               </p>
             </div>
             <div class="mt-6 flex justify-end gap-3">
