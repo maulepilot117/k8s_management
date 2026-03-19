@@ -17,19 +17,31 @@ export function canPerform(
 ): boolean {
   if (!rbac) return true; // Permissions not loaded yet — allow optimistically
 
-  // Check namespace-scoped permissions
-  const nsPerms = rbac.namespaces?.[namespace];
-  if (nsPerms) {
-    const verbs = nsPerms[kind];
+  // Check cluster-scoped permissions (applies to all namespaces)
+  const clusterPerms = rbac.clusterScoped;
+  if (clusterPerms) {
+    const verbs = clusterPerms[kind];
     if (verbs && (verbs.includes(verb) || verbs.includes("*"))) {
       return true;
     }
   }
 
-  // Check cluster-scoped permissions (applies to all namespaces)
-  const clusterPerms = rbac.clusterScoped;
-  if (clusterPerms) {
-    const verbs = clusterPerms[kind];
+  // When viewing "All Namespaces" (empty string), allow if the user
+  // has permission in ANY loaded namespace
+  if (!namespace) {
+    for (const nsPerms of Object.values(rbac.namespaces ?? {})) {
+      const verbs = nsPerms[kind];
+      if (verbs && (verbs.includes(verb) || verbs.includes("*"))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Check namespace-scoped permissions
+  const nsPerms = rbac.namespaces?.[namespace];
+  if (nsPerms) {
+    const verbs = nsPerms[kind];
     if (verbs && (verbs.includes(verb) || verbs.includes("*"))) {
       return true;
     }
