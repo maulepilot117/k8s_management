@@ -190,6 +190,15 @@ func (rc *RBACChecker) getRulesForNamespace(ctx context.Context, cs *kubernetes.
 
 	for _, rule := range result.Status.ResourceRules {
 		for _, resource := range rule.Resources {
+			if resource == "*" {
+				// Wildcard resource — applies to all tracked resources
+				for tracked := range trackedResources {
+					for _, verb := range rule.Verbs {
+						perms[tracked] = appendUnique(perms[tracked], verb)
+					}
+				}
+				continue
+			}
 			if !trackedResources[resource] {
 				continue
 			}
