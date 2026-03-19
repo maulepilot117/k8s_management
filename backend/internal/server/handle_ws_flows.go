@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"net/http"
-	"regexp"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/kubecenter/kubecenter/internal/auth"
+	"github.com/kubecenter/kubecenter/internal/k8s/resources"
 	"github.com/kubecenter/kubecenter/internal/networking"
-	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // flowSubRequest is the filter message sent by the client after auth.
@@ -18,15 +18,20 @@ type flowSubRequest struct {
 	Verdict   string `json:"verdict"`
 }
 
-var flowNSRegexp = regexp.MustCompile(`^[a-z0-9]([a-z0-9.\-]{0,251}[a-z0-9])?$`)
-
 const (
-	flowWriteWait  = 10 * time.Second
-	flowPongWait   = 60 * time.Second
-	flowPingPeriod = (flowPongWait * 9) / 10
+	flowWriteWait      = 10 * time.Second
+	flowPongWait       = 60 * time.Second
+	flowPingPeriod     = (flowPongWait * 9) / 10
+	flowMaxReadSize    = 4096 // only expect small auth/filter messages
+	maxFlowConnections = 100  // concurrent flow WS connections
 )
 
+// flowWSCount tracks active flow WebSocket connections for DoS protection.
+var flowWSCount atomic.Int64
+
 // handleWSFlows handles WebSocket connections for real-time Hubble flow streaming.
+// Uses a direct per-client gRPC→WS pipe instead of the Hub, because flow volume
+// (100s/sec) would starve the Hub's 1024-event channel used for resource events.
 // Protocol: client sends auth message (JWT), then filter message, then receives flows.
 func (s *Server) handleWSFlows(w http.ResponseWriter, r *http.Request) {
 	hc := s.NetworkingHandler.HubbleClient
@@ -35,14 +40,13 @@ func (s *Server) handleWSFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate origin (same as resource WS)
-	origin := r.Header.Get("Origin")
-	if origin == "" && !s.Config.Dev {
-		http.Error(w, "Origin header required", http.StatusForbidden)
+	// Connection limit — prevent goroutine/gRPC exhaustion
+	if flowWSCount.Load() >= maxFlowConnections {
+		http.Error(w, "too many flow connections", http.StatusServiceUnavailable)
 		return
 	}
-	if origin != "" && !s.isAllowedOrigin(origin) {
-		http.Error(w, "origin not allowed", http.StatusForbidden)
+
+	if !s.validateWSOrigin(w, r) {
 		return
 	}
 
@@ -54,6 +58,12 @@ func (s *Server) handleWSFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+
+	// Prevent oversized messages before auth (DoS protection)
+	conn.SetReadLimit(flowMaxReadSize)
+
+	flowWSCount.Add(1)
+	defer flowWSCount.Add(-1)
 
 	// Step 1: Read auth message (JWT token)
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
@@ -84,7 +94,7 @@ func (s *Server) handleWSFlows(w http.ResponseWriter, r *http.Request) {
 		conn.WriteJSON(map[string]any{"type": "error", "message": "filter message required"})
 		return
 	}
-	if filter.Namespace == "" || !flowNSRegexp.MatchString(filter.Namespace) {
+	if filter.Namespace == "" || !resources.ValidateK8sName(filter.Namespace) {
 		conn.WriteJSON(map[string]any{"type": "error", "message": "valid namespace required"})
 		return
 	}
@@ -93,15 +103,17 @@ func (s *Server) handleWSFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 3: RBAC check — can user list pods in the namespace? (flow visibility = pod observability)
-	cs, err := s.NetworkingHandler.K8sClient.ClientForUser(user.KubernetesUsername, user.KubernetesGroups)
+	// Step 3: RBAC check — flow visibility = pod observability (SelfSubjectAccessReview, cached 60s)
+	allowed, err := s.ResourceHandler.AccessChecker.CanAccess(
+		r.Context(), user.KubernetesUsername, user.KubernetesGroups,
+		"list", "pods", filter.Namespace,
+	)
 	if err != nil {
 		conn.WriteJSON(map[string]any{"type": "error", "message": "permission check failed"})
 		return
 	}
-	_, err = cs.CoreV1().Pods(filter.Namespace).List(r.Context(), k8smetav1.ListOptions{Limit: 1})
-	if err != nil {
-		conn.WriteJSON(map[string]any{"type": "error", "message": "no permission to view flows in " + filter.Namespace})
+	if !allowed {
+		conn.WriteJSON(map[string]any{"type": "error", "message": "no permission to view flows in this namespace"})
 		return
 	}
 
@@ -122,7 +134,7 @@ func (s *Server) handleWSFlows(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	// Ping/pong keepalive in a goroutine
+	// Ping/pong keepalive
 	conn.SetReadDeadline(time.Now().Add(flowPongWait))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(flowPongWait))
@@ -145,8 +157,6 @@ func (s *Server) handleWSFlows(w http.ResponseWriter, r *http.Request) {
 	defer ticker.Stop()
 
 	// Stream flows from gRPC → WebSocket
-	// The callback is called from the gRPC stream goroutine.
-	// We use a channel to decouple gRPC recv from WS write.
 	flowCh := make(chan networking.FlowRecord, 64)
 	streamErr := make(chan error, 1)
 
@@ -155,7 +165,7 @@ func (s *Server) handleWSFlows(w http.ResponseWriter, r *http.Request) {
 			select {
 			case flowCh <- flow:
 			default:
-				// Drop flow if channel full — client is slow
+				// Drop flow if channel full — client is slow, flows are ephemeral
 			}
 		})
 		streamErr <- err

@@ -1,5 +1,5 @@
 import { useSignal } from "@preact/signals";
-import { useCallback, useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { IS_BROWSER } from "fresh/runtime";
 import { apiGet, getAccessToken } from "@/lib/api.ts";
 import { selectedNamespace } from "@/lib/namespace.ts";
@@ -47,8 +47,29 @@ export default function FlowViewer() {
   const flows = useSignal<FlowRecord[]>([]);
   const loading = useSignal(false);
   const error = useSignal<string | null>(null);
-  const live = useSignal(false);
+  const wsState = useSignal<"disconnected" | "connecting" | "live">(
+    "disconnected",
+  );
+
+  // Connection generation counter — prevents stale WS callbacks from clobbering state
+  const wsIdRef = useRef(0);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // RAF batching for high-volume flow updates
+  const pendingFlows = useRef<FlowRecord[]>([]);
+  const rafId = useRef<number>(0);
+
+  const flushFlows = () => {
+    rafId.current = 0;
+    const batch = pendingFlows.current;
+    if (batch.length === 0) return;
+    pendingFlows.current = [];
+    const current = flows.value;
+    const merged = [...batch.reverse(), ...current];
+    flows.value = merged.length > MAX_FLOWS
+      ? merged.slice(0, MAX_FLOWS)
+      : merged;
+  };
 
   // Fetch namespaces
   useEffect(() => {
@@ -63,30 +84,34 @@ export default function FlowViewer() {
   }, []);
 
   // HTTP fallback fetch
-  const fetchFlows = useCallback(async () => {
+  const fetchFlows = () => {
     if (!IS_BROWSER) return;
     loading.value = true;
     error.value = null;
-    try {
-      let url = `/v1/networking/hubble/flows?namespace=${
-        encodeURIComponent(namespace.value)
-      }&limit=200`;
-      if (verdict.value) {
-        url += `&verdict=${encodeURIComponent(verdict.value)}`;
-      }
-      const resp = await apiGet<FlowRecord[]>(url);
-      flows.value = Array.isArray(resp.data) ? resp.data : [];
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to fetch flows";
-      error.value = msg;
-      flows.value = [];
-    } finally {
-      loading.value = false;
+    let url = `/v1/networking/hubble/flows?namespace=${
+      encodeURIComponent(namespace.value)
+    }&limit=200`;
+    if (verdict.value) {
+      url += `&verdict=${encodeURIComponent(verdict.value)}`;
     }
-  }, []);
+    apiGet<FlowRecord[]>(url)
+      .then((resp) => {
+        flows.value = Array.isArray(resp.data) ? resp.data : [];
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error
+          ? err.message
+          : "Failed to fetch flows";
+        error.value = msg;
+        flows.value = [];
+      })
+      .finally(() => {
+        loading.value = false;
+      });
+  };
 
   // Connect WebSocket for live streaming
-  const connectWS = useCallback(() => {
+  const connectWS = () => {
     // Close existing connection
     if (wsRef.current) {
       wsRef.current.close();
@@ -95,10 +120,15 @@ export default function FlowViewer() {
 
     const token = getAccessToken();
     if (!token) {
-      // No token — fall back to HTTP
       fetchFlows();
       return;
     }
+
+    // Increment generation — all callbacks check staleness against this
+    const connectionId = ++wsIdRef.current;
+    const isStale = () => wsIdRef.current !== connectionId;
+
+    wsState.value = "connecting";
 
     const proto = globalThis.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(
@@ -107,9 +137,11 @@ export default function FlowViewer() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // Send auth
+      if (isStale()) {
+        ws.close();
+        return;
+      }
       ws.send(JSON.stringify({ type: "auth", token }));
-      // Send filter
       ws.send(
         JSON.stringify({
           namespace: namespace.value,
@@ -119,21 +151,22 @@ export default function FlowViewer() {
     };
 
     ws.onmessage = (event) => {
+      if (isStale()) return;
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "flow" && msg.data) {
-          // Prepend new flow, trim if over limit
-          const current = flows.value;
-          flows.value = current.length >= MAX_FLOWS
-            ? [msg.data, ...current.slice(0, MAX_FLOWS - 1)]
-            : [msg.data, ...current];
+          // Batch flows for RAF flush
+          pendingFlows.current.push(msg.data);
+          if (!rafId.current) {
+            rafId.current = requestAnimationFrame(flushFlows);
+          }
         } else if (msg.type === "subscribed") {
-          live.value = true;
+          wsState.value = "live";
           error.value = null;
-          flows.value = []; // Clear old flows on new subscription
+          flows.value = [];
         } else if (msg.type === "error") {
           error.value = msg.message;
-          live.value = false;
+          wsState.value = "disconnected";
         }
       } catch {
         // Ignore malformed messages
@@ -141,28 +174,36 @@ export default function FlowViewer() {
     };
 
     ws.onclose = () => {
-      live.value = false;
+      if (isStale()) return;
+      wsState.value = "disconnected";
       wsRef.current = null;
     };
 
     ws.onerror = () => {
-      // WS failed — fall back to HTTP silently
-      live.value = false;
+      if (isStale()) return;
+      wsState.value = "disconnected";
       wsRef.current = null;
       fetchFlows();
     };
-  }, []);
+  };
 
   // Connect on mount and when filters change
   useEffect(() => {
     if (!IS_BROWSER) return;
     connectWS();
     return () => {
+      // Increment generation so any in-flight callbacks become stale
+      wsIdRef.current++;
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
-        live.value = false;
       }
+      wsState.value = "disconnected";
+      if (rafId.current) {
+        cancelAnimationFrame(rafId.current);
+        rafId.current = 0;
+      }
+      pendingFlows.current = [];
     };
   }, [namespace.value, verdict.value]);
 
@@ -183,10 +224,15 @@ export default function FlowViewer() {
           <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">
             Network Flows
           </h1>
-          {live.value && (
+          {wsState.value === "live" && (
             <span class="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
               <span class="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
+            </span>
+          )}
+          {wsState.value === "connecting" && (
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              Connecting...
             </span>
           )}
         </div>
@@ -264,7 +310,7 @@ export default function FlowViewer() {
                 >
                   {error.value
                     ? "Failed to load flows"
-                    : live.value
+                    : wsState.value === "live"
                     ? "Waiting for flows..."
                     : "No flows found. Hubble may not be enabled or there is no traffic in this namespace."}
                 </td>
