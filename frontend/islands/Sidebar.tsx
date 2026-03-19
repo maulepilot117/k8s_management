@@ -1,5 +1,5 @@
 import { useComputed, useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useCallback, useEffect, useRef } from "preact/hooks";
 import { IS_BROWSER } from "fresh/runtime";
 import { NAV_SECTIONS } from "@/lib/constants.ts";
 import { ResourceIcon } from "@/components/k8s/ResourceIcon.tsx";
@@ -19,6 +19,21 @@ export default function Sidebar({ currentPath }: SidebarProps) {
   );
   const collapsed = useSignal<Record<string, boolean>>({});
   const appVersion = useSignal("");
+  const navRef = useRef<HTMLElement>(null);
+
+  // Restore nav scroll position after hydration
+  useEffect(() => {
+    if (!IS_BROWSER || !navRef.current) return;
+    const saved = sessionStorage.getItem("sidebar-scroll");
+    if (saved) navRef.current.scrollTop = parseInt(saved, 10);
+  }, []);
+
+  // Save scroll position on every scroll
+  const onNavScroll = useCallback(() => {
+    if (navRef.current) {
+      sessionStorage.setItem("sidebar-scroll", String(navRef.current.scrollTop));
+    }
+  }, []);
 
   useEffect(() => {
     if (!IS_BROWSER) return;
@@ -80,7 +95,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav class="flex-1 overflow-y-auto py-2">
+      <nav ref={navRef} onScroll={onNavScroll} class="flex-1 overflow-y-auto py-2">
         {NAV_SECTIONS.filter((section) =>
           // Hide "Settings" section for non-admin users
           section.title !== "Settings" || userIsAdmin.value
