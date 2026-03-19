@@ -12,12 +12,16 @@ A web-based Kubernetes management platform that delivers vCenter-level functiona
 - **RBAC-aware multi-tenancy** with user impersonation (OIDC, LDAP, local accounts with PostgreSQL persistence)
 - **Full YAML escape hatch** with Monaco editor, validation, diff, and server-side apply
 - **Cilium Network Policy editor** with NSX-T-style rule table, YAML preview, and dangerous policy warnings
-- **Hubble network flow visibility** with gRPC-to-HTTP bridge, namespace/verdict filters, and color-coded flow table
+- **Hubble network flow visibility** with real-time WebSocket streaming (gRPC→WS), namespace/verdict filters, and color-coded flow table
+- **Resource action buttons** with kebab menus (scale, restart, delete, suspend, trigger) and type-to-confirm for destructive actions
 - **Namespace creation wizard** with inline create from deployment/service wizards
-- **Pod management** including logs, exec terminal, and resource metrics *(Phase 2)*
-- **Alerting** via Alertmanager webhook receiver with SMTP email notifications, PrometheusRule CRD management, and real-time alert banner
+- **Pod management** including logs, exec terminal, and resource metrics
+- **Admin user management** — list, delete, and change passwords for local accounts
+- **Alerting** via Alertmanager webhook receiver with SMTP email notifications, PrometheusRule CRD management, and real-time WebSocket alert banner
 - **Audit logging** with PostgreSQL persistence, paginated query API, filterable viewer, and 90-day retention
 - **Multi-cluster management** with cluster registry, wizard registration, and per-cluster context switching
+- **Frontend permission gating** — UI hides actions the user lacks k8s RBAC permission for (SelfSubjectRulesReview-backed)
+- **CSP hardening** via Fresh middleware with base-uri, object-src, and form-action directives
 
 ## Architecture
 

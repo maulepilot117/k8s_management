@@ -61,6 +61,8 @@ kubecenter/
 │   │   │   ├── handle_cluster.go      # GET /cluster/info (version, node count, KubeCenter version)
 │   │   │   ├── handle_users.go       # Admin-only user management: list, delete, change password
 │   │   │   ├── handle_users_test.go  # 7 httptest integration tests (guards, RBAC, password validation)
+│   │   │   ├── handle_ws.go          # WebSocket upgrade for resource events + shared origin validation
+│   │   │   ├── handle_ws_flows.go    # WebSocket for Hubble flow streaming (gRPC→WS pipe, per-client)
 │   │   │   └── middleware/
 │   │   │       ├── auth.go            # JWT validation middleware + CSRF (X-Requested-With header)
 │   │   │       ├── auth_test.go       # Middleware unit tests
@@ -139,7 +141,7 @@ kubecenter/
 ├── frontend/                          # Deno 2.x + Fresh 2.x frontend
 │   ├── deno.json                      # Deno config — imports, JSX precompile, Vite, Tailwind v4
 │   ├── deno.lock                      # Lock file
-│   ├── main.ts                        # Fresh app entrypoint — fsRoutes, Vite plugin, Tailwind
+│   ├── main.ts                        # Fresh app entrypoint — fsRoutes, csp() middleware, security headers
 │   ├── client.ts                      # Client-side hydration entrypoint (required by Fresh 2)
 │   ├── vite.config.ts                 # Vite config with Fresh + Tailwind plugins
 │   ├── utils.ts                       # createDefine<State>() typed helper
@@ -156,6 +158,7 @@ kubecenter/
 │   │   ├── resource-columns.ts       # Column definitions for all 15 resource types
 │   │   ├── status-colors.ts          # Shared status → color mapping utility
 │   │   ├── action-handlers.ts        # Resource action definitions + API execution (scale, restart, delete, suspend, trigger)
+│   │   ├── permissions.ts            # K8s RBAC permission checking (canPerform) for UI gating
 │   │   └── user-types.ts             # LocalUser interface for admin user management
 │   ├── routes/
 │   │   ├── _app.tsx                   # HTML shell — <head>, viewport, stylesheet link
@@ -415,6 +418,10 @@ WS /api/v1/ws/logs/:ns/:pod/:container   # Real-time log stream
 WS /api/v1/ws/exec/:ns/:pod/:container   # Pod exec terminal (stdin/stdout/stderr/resize)
 
 WS /api/v1/ws/alerts       # Real-time alert notifications
+
+WS /api/v1/ws/flows        # Real-time Hubble network flow streaming
+                            # Client sends: auth message (JWT), then filter { namespace, verdict }
+                            # Server sends: { "type": "flow", "data": FlowRecord }
 ```
 
 ---
@@ -674,25 +681,27 @@ type APIError struct {
 
 ---
 
-## Phase 1 Build Order (MVP)
+## Build Progress
 
-Build in this order to have a working system at each step:
+### Phase 1 (MVP) — COMPLETE ✅
 
-1. ~~**Backend skeleton** — HTTP server, health check, config loading, in-cluster k8s client~~ ✅
-2. ~~**Auth system** — Local accounts with JWT, login/logout endpoints, auth middleware~~ ✅
-3. ~~**Resource listing** — Informer-backed CRUD for 15 resource types, RBAC, pagination, validation~~ ✅
-4. ~~**Frontend skeleton** — Fresh app with layout, sidebar, login page, dashboard home~~ ✅
-5. ~~**Resource browser** — Tables for pods, deployments, services with real-time WebSocket updates~~ ✅
-6. **Resource detail** — Detail views with tabs (Overview, YAML, Events, Metrics placeholder)
-7. **YAML apply** — Monaco editor, validation, diff, server-side apply
-8. **Resource creation wizards** — Deployment wizard, Service wizard
-9. **Monitoring integration** — Prometheus discovery/deploy, Grafana embed, performance tabs
-10. **CSI/CNI wizards** — Storage and networking configuration
-11. **Alerting** — Alertmanager webhook receiver, SMTP email notifications
-12. **OIDC/LDAP auth** — SSO integration
-13. **Helm chart** — Full production Helm chart with all configuration options
-14. **Audit logging** — Comprehensive audit trail
-15. **Polish** — Error handling, loading states, empty states, dark mode, keyboard shortcuts
+All 15 steps implemented (Steps 1-15).
+
+### Phase 2 (Multi-Cluster + Advanced Features) — COMPLETE ✅
+
+All 8 steps implemented (Steps 16-23).
+
+### Phase 3 (Enhancements) — COMPLETE ✅
+
+| # | Feature | PR |
+|---|---------|---|
+| 1 | Pod Exec (WebSocket + SPDY) | #44 |
+| 2 | User Management UI (list, delete, change password) | #44, #48 |
+| 3 | Dynamic CiliumNetworkPolicy Informer | #49 |
+| 4 | WebSocket Hubble Flow Streaming | #50 |
+| 5 | CSP Fresh Middleware + Hardening | #51 |
+| 6 | AlertBanner WebSocket Migration | #52 |
+| 7 | Frontend Permission Gating (k8s RBAC) | #53, #54 |
 
 ---
 
