@@ -12,10 +12,50 @@ interface FlowRecord {
   direction: string;
   srcNamespace: string;
   srcPod: string;
+  srcIP?: string;
+  srcLabels?: string[];
+  srcNames?: string[];
+  srcService?: string;
   dstNamespace: string;
   dstPod: string;
+  dstIP?: string;
+  dstLabels?: string[];
+  dstNames?: string[];
+  dstService?: string;
   protocol: string;
   dstPort?: number;
+  srcPort?: number;
+  summary?: string;
+}
+
+/** Format an endpoint for display — shows pod, IP, DNS name, or identity label */
+function formatEndpoint(
+  ns: string,
+  pod: string,
+  ip?: string,
+  names?: string[],
+  service?: string,
+  labels?: string[],
+): { primary: string; detail?: string } {
+  if (pod) {
+    return {
+      primary: ns ? `${ns}/${pod}` : pod,
+      detail: service || undefined,
+    };
+  }
+  // External traffic — no pod
+  const dnsName = names?.length ? names[0] : undefined;
+  const identity = labels?.find((l) => l.startsWith("reserved:"))?.replace(
+    "reserved:",
+    "",
+  );
+  if (dnsName) {
+    return { primary: dnsName, detail: ip };
+  }
+  if (ip) {
+    return { primary: ip, detail: identity };
+  }
+  return { primary: identity ?? "unknown" };
 }
 
 const VERDICT_OPTIONS = ["", "FORWARDED", "DROPPED", "ERROR", "AUDIT"];
@@ -331,17 +371,53 @@ export default function FlowViewer() {
                   </span>
                 </td>
                 <td class="py-1.5 px-3 whitespace-nowrap">
-                  <span class="text-slate-900 dark:text-white">
-                    {f.srcNamespace ? `${f.srcNamespace}/` : ""}
-                    {f.srcPod || "external"}
-                  </span>
+                  {(() => {
+                    const ep = formatEndpoint(
+                      f.srcNamespace,
+                      f.srcPod,
+                      f.srcIP,
+                      f.srcNames,
+                      f.srcService,
+                      f.srcLabels,
+                    );
+                    return (
+                      <div>
+                        <span class="text-slate-900 dark:text-white">
+                          {ep.primary}
+                        </span>
+                        {ep.detail && (
+                          <span class="ml-1 text-xs text-slate-400 dark:text-slate-500">
+                            {ep.detail}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td class="py-1.5 px-3 whitespace-nowrap">
-                  <span class="text-slate-900 dark:text-white">
-                    {f.dstNamespace ? `${f.dstNamespace}/` : ""}
-                    {f.dstPod || "external"}
-                    {f.dstPort ? `:${f.dstPort}` : ""}
-                  </span>
+                  {(() => {
+                    const ep = formatEndpoint(
+                      f.dstNamespace,
+                      f.dstPod,
+                      f.dstIP,
+                      f.dstNames,
+                      f.dstService,
+                      f.dstLabels,
+                    );
+                    return (
+                      <div>
+                        <span class="text-slate-900 dark:text-white">
+                          {ep.primary}
+                          {f.dstPort ? `:${f.dstPort}` : ""}
+                        </span>
+                        {ep.detail && (
+                          <span class="ml-1 text-xs text-slate-400 dark:text-slate-500">
+                            {ep.detail}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td class="py-1.5 px-3 text-slate-600 dark:text-slate-400">
                   {f.protocol}

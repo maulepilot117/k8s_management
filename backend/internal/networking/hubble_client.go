@@ -13,7 +13,6 @@ import (
 )
 
 // FlowRecord is the JSON-serializable representation of a Hubble flow.
-// Only includes fields needed for the frontend flow table.
 type FlowRecord struct {
 	Time         time.Time `json:"time"`
 	Verdict      string    `json:"verdict"`
@@ -21,10 +20,20 @@ type FlowRecord struct {
 	Direction    string    `json:"direction"`
 	SrcNamespace string    `json:"srcNamespace"`
 	SrcPod       string    `json:"srcPod"`
+	SrcIP        string    `json:"srcIP,omitempty"`
+	SrcLabels    []string  `json:"srcLabels,omitempty"`
+	SrcNames     []string  `json:"srcNames,omitempty"`
+	SrcService   string    `json:"srcService,omitempty"`
 	DstNamespace string    `json:"dstNamespace"`
 	DstPod       string    `json:"dstPod"`
+	DstIP        string    `json:"dstIP,omitempty"`
+	DstLabels    []string  `json:"dstLabels,omitempty"`
+	DstNames     []string  `json:"dstNames,omitempty"`
+	DstService   string    `json:"dstService,omitempty"`
 	Protocol     string    `json:"protocol"`
 	DstPort      uint32    `json:"dstPort,omitempty"`
+	SrcPort      uint32    `json:"srcPort,omitempty"`
+	Summary      string    `json:"summary,omitempty"`
 }
 
 // HubbleClient wraps a gRPC connection to Hubble Relay.
@@ -176,6 +185,7 @@ func convertFlow(f *flowpb.Flow) FlowRecord {
 	rec := FlowRecord{
 		Verdict:   f.GetVerdict().String(),
 		Direction: f.GetTrafficDirection().String(),
+		Summary:   f.GetSummary(),
 	}
 
 	if t := f.GetTime(); t != nil {
@@ -189,11 +199,31 @@ func convertFlow(f *flowpb.Flow) FlowRecord {
 	if src := f.GetSource(); src != nil {
 		rec.SrcNamespace = src.GetNamespace()
 		rec.SrcPod = src.GetPodName()
+		rec.SrcLabels = src.GetLabels()
 	}
 
 	if dst := f.GetDestination(); dst != nil {
 		rec.DstNamespace = dst.GetNamespace()
 		rec.DstPod = dst.GetPodName()
+		rec.DstLabels = dst.GetLabels()
+	}
+
+	// IP addresses — especially useful for external traffic with no pod identity
+	if ip := f.GetIP(); ip != nil {
+		rec.SrcIP = ip.GetSource()
+		rec.DstIP = ip.GetDestination()
+	}
+
+	// DNS names (reverse lookups)
+	rec.SrcNames = f.GetSourceNames()
+	rec.DstNames = f.GetDestinationNames()
+
+	// k8s Service names
+	if svc := f.GetSourceService(); svc != nil && svc.GetName() != "" {
+		rec.SrcService = svc.GetNamespace() + "/" + svc.GetName()
+	}
+	if svc := f.GetDestinationService(); svc != nil && svc.GetName() != "" {
+		rec.DstService = svc.GetNamespace() + "/" + svc.GetName()
 	}
 
 	if l4 := f.GetL4(); l4 != nil {
@@ -201,9 +231,11 @@ func convertFlow(f *flowpb.Flow) FlowRecord {
 		case *flowpb.Layer4_TCP:
 			rec.Protocol = "TCP"
 			rec.DstPort = p.TCP.GetDestinationPort()
+			rec.SrcPort = p.TCP.GetSourcePort()
 		case *flowpb.Layer4_UDP:
 			rec.Protocol = "UDP"
 			rec.DstPort = p.UDP.GetDestinationPort()
+			rec.SrcPort = p.UDP.GetSourcePort()
 		case *flowpb.Layer4_ICMPv4:
 			rec.Protocol = "ICMPv4"
 		case *flowpb.Layer4_ICMPv6:
@@ -211,6 +243,7 @@ func convertFlow(f *flowpb.Flow) FlowRecord {
 		case *flowpb.Layer4_SCTP:
 			rec.Protocol = "SCTP"
 			rec.DstPort = p.SCTP.GetDestinationPort()
+			rec.SrcPort = p.SCTP.GetSourcePort()
 		}
 	}
 
