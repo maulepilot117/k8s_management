@@ -47,8 +47,10 @@ spec:
     - ports:
         - port: 5432
           protocol: TCP
-    # Kubernetes API server (HTTPS), OIDC discovery, Prometheus, Grafana
+    # Kubernetes API server (HTTPS), OIDC discovery, Prometheus, Grafana, Hubble Relay
     - ports:
+        - port: 80
+          protocol: TCP
         - port: 443
           protocol: TCP
         - port: 6443
