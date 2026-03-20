@@ -37,6 +37,9 @@ service:
 ingress:
   enabled: false
 
+networkPolicy:
+  enabled: false  # Disabled — Cilium NP port-filtering blocks cross-namespace gRPC (Hubble Relay)
+
 postgresql:
   enabled: true
   image:

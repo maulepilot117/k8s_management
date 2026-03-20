@@ -37,21 +37,17 @@ spec:
           protocol: TCP
     {{- end }}
   egress:
-    # DNS resolution
+    # Allow all TCP/UDP egress to required ports (DNS, k8s API, PostgreSQL, Prometheus, Grafana, Hubble Relay)
     - ports:
         - port: 53
           protocol: UDP
         - port: 53
           protocol: TCP
-    # PostgreSQL database
-    - ports:
-        - port: 5432
-          protocol: TCP
-    # Kubernetes API server (HTTPS), OIDC discovery, Prometheus, Grafana, Hubble Relay
-    - ports:
         - port: 80
           protocol: TCP
         - port: 443
+          protocol: TCP
+        - port: 5432
           protocol: TCP
         - port: 6443
           protocol: TCP
