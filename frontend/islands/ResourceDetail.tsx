@@ -32,6 +32,7 @@ import PerformancePanel from "@/islands/PerformancePanel.tsx";
 import LogViewer from "@/islands/LogViewer.tsx";
 import PodExec from "@/islands/PodExec.tsx";
 import RelatedPods from "@/islands/RelatedPods.tsx";
+import { CodeMirrorEditor } from "@/components/ui/CodeMirrorEditor.tsx";
 
 interface ResourceDetailProps {
   kind: string;
@@ -756,17 +757,15 @@ export default function ResourceDetail({
               </button>
             </div>
           </div>
-          {/* Textarea editor — Monaco's virtual viewport is broken with esm.sh CDN */}
-          <textarea
-            value={yamlEditContent.value}
-            onInput={(e) => {
-              yamlEditContent.value = (e.target as HTMLTextAreaElement).value;
-            }}
-            class="flex-1 w-full bg-slate-900 text-slate-100 font-mono text-sm p-4 resize-none focus:outline-none border-none"
-            spellcheck={false}
-            autocomplete="off"
-            autocapitalize="off"
-          />
+          {/* CodeMirror 6 editor — native DOM rendering, no scroll issues */}
+          <div class="flex-1 min-h-0">
+            <CodeMirrorEditor
+              value={yamlEditContent.value}
+              onChange={(v) => {
+                yamlEditContent.value = v;
+              }}
+            />
+          </div>
         </div>
       )}
 
