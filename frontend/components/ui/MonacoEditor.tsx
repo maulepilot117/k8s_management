@@ -53,24 +53,6 @@ export function MonacoEditor({
   // Guard to suppress onChange during programmatic setValue calls
   const isSettingExternally = useRef(false);
 
-  // Lock the scrollable parent when Monaco is active to prevent dual-scroll.
-  // Monaco's virtual viewport rendering breaks when a parent element scrolls.
-  useEffect(() => {
-    if (!IS_BROWSER || !containerRef.current) return;
-    const scrollParent = containerRef.current.closest(
-      ".overflow-y-auto, .overflow-auto",
-    ) as HTMLElement | null;
-    if (!scrollParent) return;
-
-    // Scroll to top and lock
-    scrollParent.scrollTop = 0;
-    scrollParent.style.overflow = "hidden";
-
-    return () => {
-      scrollParent.style.overflow = "";
-    };
-  }, []);
-
   // Initialize Monaco
   useEffect(() => {
     if (!IS_BROWSER || !containerRef.current) return;
