@@ -550,16 +550,23 @@ export default function ResourceDetail({
               </div>
             </div>
 
-            {/* YAML Editor — use calc to fill remaining viewport height */}
-            <YamlEditor
-              value={yamlEditing.value ? yamlEditContent.value : yamlContent}
-              onChange={(v) => {
-                yamlEditContent.value = v;
-              }}
-              readOnly={!yamlEditing.value}
-              height="auto"
-              fillContainer
-            />
+            {/* YAML: plain <pre> for reading, Monaco only for editing */}
+            {yamlEditing.value
+              ? (
+                <YamlEditor
+                  value={yamlEditContent.value}
+                  onChange={(v) => {
+                    yamlEditContent.value = v;
+                  }}
+                  readOnly={false}
+                  height="calc(100vh - 300px)"
+                />
+              )
+              : (
+                <pre class="overflow-auto rounded-md border border-slate-700 bg-slate-900 p-4 text-sm text-slate-100 font-mono leading-relaxed max-h-[calc(100vh-300px)]">
+                  {yamlContent}
+                </pre>
+              )}
           </div>
         );
       },
