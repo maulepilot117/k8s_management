@@ -209,7 +209,7 @@ export function MonacoEditor({
 
   return (
     <div
-      class="relative rounded-md overflow-hidden border border-slate-700"
+      class="relative rounded-md border border-slate-700"
       style={{ height }}
     >
       {loading.value && (

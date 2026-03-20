@@ -550,13 +550,14 @@ export default function ResourceDetail({
               </div>
             </div>
 
-            {/* YAML Editor */}
+            {/* YAML Editor — use calc to fill remaining viewport height */}
             <YamlEditor
               value={yamlEditing.value ? yamlEditContent.value : yamlContent}
               onChange={(v) => {
                 yamlEditContent.value = v;
               }}
               readOnly={!yamlEditing.value}
+              height="calc(100vh - 280px)"
               height="500px"
             />
           </div>

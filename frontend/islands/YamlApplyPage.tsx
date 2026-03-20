@@ -185,7 +185,7 @@ export default function YamlApplyPage() {
             yamlContent.value = v;
           }}
           readOnly={isWorking}
-          height="400px"
+          height="calc(100vh - 320px)"
         />
       </div>
 
